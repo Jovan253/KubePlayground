@@ -119,11 +119,15 @@ Every mutating command (`apply`, `delete`, `scale`, `edit`) gets an explicit
 - [x] ConfigMaps are plaintext; Secrets are base64-encoded, **not encrypted**
 - [x] Understand `kubectl apply` vs `create` (declarative vs imperative)
 
-### ☐ M2 — Backend API, running locally
+### ◐ M2 — Backend API, running locally
 *Still outside the cluster — talks to it using your kubeconfig.*
-- [ ] Python venv + `fastapi`, `uvicorn`, `kubernetes`
-- [ ] `GET /api/namespaces`, `/api/pods`, `/api/deployments`, `/api/nodes`
-- [ ] `POST /api/deployments/{ns}/{name}/scale`
+- [x] Python venv + `fastapi`, `uvicorn`, `kubernetes` (`backend/requirements.txt`)
+- [x] `GET /api/health`, `/api/cluster`, `/api/namespaces`, `/api/nodes`, `/api/pods`,
+      `/api/deployments`, `/api/services`, `/api/pods/{ns}/{name}/logs`
+- [x] `POST /api/deployments/{ns}/{name}/scale` — patches the `deployments/scale` subresource
+- [x] Context guard: refuses to start unless the active context is `rancher-desktop`
+- [x] Smoke-tested against the live cluster; scale up/down and the 404 path both verified
+- [ ] **Jovan to review `backend/main.py`** — particularly `load_config()`
 - [ ] Understand `load_kube_config()` vs `load_incluster_config()` — the seam that matters in M3
 
 ### ☐ M3 — Containerise and run it *in* the cluster

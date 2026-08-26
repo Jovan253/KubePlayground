@@ -1,0 +1,774 @@
+<title>KubePlayground Field Notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* ============ tokens: light (default, un-stamped + explicit light) ============ */
+:root {
+  --ground:      #F1F3F5;
+  --surface:     #FFFFFF;
+  --surface-2:   #E9ECEF;
+  --ink:         #11161B;
+  --ink-soft:    #3D4852;
+  --muted:       #66727E;
+  --rule:        #D8DDE3;
+  --rule-strong: #BAC3CC;
+
+  --accent:      #0B6E8F;
+  --accent-ink:  #06556F;
+  --accent-wash: #E2EFF4;
+
+  --warn:        #9A5518;
+  --warn-wash:   #F7EBDF;
+  --warn-rule:   #E0C3A2;
+
+  --code-bg:     #EDF0F3;
+  --code-ink:    #1B2733;
+
+  --shadow: 0 1px 2px rgba(17,22,27,.05), 0 6px 20px -12px rgba(17,22,27,.18);
+}
+
+/* ============ tokens: dark via OS preference (not when light is forced) ============ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #0D1317;
+    --surface:     #141C22;
+    --surface-2:   #1C262E;
+    --ink:         #E3E9ED;
+    --ink-soft:    #BAC5CE;
+    --muted:       #8593A0;
+    --rule:        #222E37;
+    --rule-strong: #33434F;
+
+    --accent:      #56B4D3;
+    --accent-ink:  #8ED0E6;
+    --accent-wash: #102C39;
+
+    --warn:        #DAA06A;
+    --warn-wash:   #2C2115;
+    --warn-rule:   #52412C;
+
+    --code-bg:     #101920;
+    --code-ink:    #CFDAE3;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+  }
+}
+
+/* ============ tokens: dark forced by toggle ============ */
+:root[data-theme="dark"] {
+  --ground:      #0D1317;
+  --surface:     #141C22;
+  --surface-2:   #1C262E;
+  --ink:         #E3E9ED;
+  --ink-soft:    #BAC5CE;
+  --muted:       #8593A0;
+  --rule:        #222E37;
+  --rule-strong: #33434F;
+
+  --accent:      #56B4D3;
+  --accent-ink:  #8ED0E6;
+  --accent-wash: #102C39;
+
+  --warn:        #DAA06A;
+  --warn-wash:   #2C2115;
+  --warn-rule:   #52412C;
+
+  --code-bg:     #101920;
+  --code-ink:    #CFDAE3;
+
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "Source Sans 3", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16.5px;
+  line-height: 1.62;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 6rem;
+}
+
+/* ---------- masthead ---------- */
+.masthead {
+  padding: 3.5rem 0 2rem;
+  border-bottom: 2px solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: .9rem;
+}
+.eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: .72rem;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+h1 {
+  font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(2.3rem, 6vw, 3.6rem);
+  line-height: 1.02;
+  letter-spacing: -.025em;
+  margin: 0;
+  text-wrap: balance;
+}
+.standfirst {
+  font-size: 1.1rem;
+  color: var(--ink-soft);
+  max-width: 60ch;
+  margin: 0;
+}
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1.5rem;
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: .74rem;
+  color: var(--muted);
+  padding-top: .4rem;
+}
+
+/* ---------- nav ---------- */
+nav.toc {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 3rem;
+}
+nav.toc ul {
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: .7rem 1.5rem;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem 1.15rem;
+}
+nav.toc a {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: .73rem;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  padding-bottom: 1px;
+  transition: color .15s, border-color .15s;
+}
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ---------- sections ---------- */
+section { margin-bottom: 3.75rem; scroll-margin-top: 4rem; }
+
+h2 {
+  font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.6rem;
+  letter-spacing: -.015em;
+  margin: 0 0 .35rem;
+  text-wrap: balance;
+}
+.section-note {
+  color: var(--muted);
+  font-size: .95rem;
+  margin: 0 0 1.5rem;
+  max-width: 66ch;
+}
+h3 {
+  font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.02rem;
+  letter-spacing: -.005em;
+  margin: 2rem 0 .6rem;
+}
+p { max-width: 68ch; }
+p.tight { margin: .4rem 0; }
+
+/* ---------- code ---------- */
+code {
+  font-family: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: .84em;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  padding: .12em .38em;
+  border-radius: 3px;
+}
+pre {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  background: var(--code-bg);
+  color: var(--code-ink);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  padding: .95rem 1.1rem;
+  overflow-x: auto;
+  font-size: .82rem;
+  line-height: 1.65;
+  margin: 1rem 0;
+  border-radius: 0 4px 4px 0;
+}
+pre code { background: none; padding: 0; font-size: 1em; }
+.cmt { color: var(--muted); }
+.hl  { color: var(--accent-ink); font-weight: 700; }
+.bad { color: var(--warn); font-weight: 700; }
+
+/* ---------- tables ---------- */
+.table-scroll { overflow-x: auto; margin: 1.1rem 0; border: 1px solid var(--rule); border-radius: 5px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: .89rem; min-width: 34rem; }
+thead th {
+  text-align: left;
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: .68rem;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+  padding: .7rem .9rem;
+  border-bottom: 1px solid var(--rule-strong);
+  white-space: nowrap;
+  background: var(--surface-2);
+}
+tbody td { padding: .62rem .9rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tbody tr:last-child td { border-bottom: none; }
+td.mono, th.mono { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; font-size: .8rem; white-space: nowrap; }
+td strong { font-weight: 600; color: var(--ink); }
+
+/* ---------- callout ---------- */
+.callout {
+  background: var(--warn-wash);
+  border: 1px solid var(--warn-rule);
+  border-left: 3px solid var(--warn);
+  padding: 1rem 1.15rem;
+  margin: 1.4rem 0;
+  border-radius: 0 4px 4px 0;
+}
+.callout .label {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: .68rem;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+  color: var(--warn);
+  font-weight: 700;
+  display: block;
+  margin-bottom: .35rem;
+}
+.callout p { margin: 0; max-width: 70ch; }
+.callout p + p { margin-top: .6rem; }
+
+.callout.exam { background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 35%, transparent); border-left-color: var(--accent); }
+.callout.exam .label { color: var(--accent-ink); }
+
+/* ---------- chain diagram ---------- */
+.chain { display: flex; flex-direction: column; gap: 0; margin: 1.4rem 0; max-width: 34rem; }
+.chain-node {
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: 5px;
+  padding: .8rem 1rem;
+  box-shadow: var(--shadow);
+}
+.chain-node .cn-name {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-weight: 700;
+  font-size: .88rem;
+  color: var(--accent-ink);
+}
+.chain-node .cn-desc { font-size: .86rem; color: var(--ink-soft); }
+.chain-link {
+  margin-left: 1.6rem;
+  border-left: 2px solid var(--rule-strong);
+  padding: .38rem 0 .38rem 1rem;
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: .7rem;
+  color: var(--muted);
+  letter-spacing: .04em;
+}
+
+/* ---------- silent-failure list ---------- */
+.fails { list-style: none; padding: 0; margin: 1.2rem 0 0; display: flex; flex-direction: column; gap: .9rem; }
+.fails li {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: .85rem 1rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: .3rem;
+}
+.fails .what {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: .8rem;
+  color: var(--warn);
+  font-weight: 500;
+}
+.fails .why { font-size: .9rem; color: var(--ink-soft); }
+
+/* ---------- key-value strip ---------- */
+.kv { display: grid; gap: 0; margin: 1.1rem 0; border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; background: var(--surface); }
+.kv div { display: grid; grid-template-columns: 13rem minmax(0,1fr); gap: 1rem; padding: .6rem .9rem; border-bottom: 1px solid var(--rule); font-size: .9rem; }
+.kv div:last-child { border-bottom: none; }
+.kv dt, .kv .k {
+  font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  font-size: .79rem;
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+.kv .v { color: var(--ink-soft); }
+@media (max-width: 34rem) { .kv div { grid-template-columns: 1fr; gap: .15rem; } }
+
+hr.rule { border: none; border-top: 1px solid var(--rule); margin: 0 0 3rem; }
+
+footer {
+  border-top: 2px solid var(--ink);
+  padding-top: 1.4rem;
+  color: var(--muted);
+  font-size: .85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 2rem;
+  justify-content: space-between;
+}
+footer .mono { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; font-size: .74rem; }
+
+a { color: var(--accent-ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <span class="eyebrow">KubePlayground · Milestone 1</span>
+    <h1>Kubernetes core objects, from scratch</h1>
+    <p class="standfirst">Everything covered in the first build session — the five objects you hand-wrote, the model underneath them, and the places Kubernetes accepted a broken manifest without complaining.</p>
+    <div class="meta-row">
+      <span>k3s v1.33.3 · rancher-desktop</span>
+      <span>kubectl v1.36</span>
+      <span>KCNA revision</span>
+    </div>
+  </header>
+</div>
+
+<nav class="toc">
+  <ul>
+    <li><a href="#model">The model</a></li>
+    <li><a href="#anatomy">Manifest anatomy</a></li>
+    <li><a href="#objects">Object reference</a></li>
+    <li><a href="#ownership">Ownership chain</a></li>
+    <li><a href="#networking">Services &amp; DNS</a></li>
+    <li><a href="#config">Config &amp; secrets</a></li>
+    <li><a href="#kubectl">kubectl</a></li>
+    <li><a href="#silent">Silent failures</a></li>
+    <li><a href="#exam">Exam flags</a></li>
+  </ul>
+</nav>
+
+<div class="wrap">
+
+  <!-- ================= MODEL ================= -->
+  <section id="model">
+    <h2>The model everything else hangs off</h2>
+    <p class="section-note">If only one idea survives to exam day, make it this one.</p>
+
+    <p>You write <strong>desired state</strong>. The control plane writes <strong>observed state</strong> and works continuously to close the gap between them. That loop never stops and never completes — it just keeps reconciling.</p>
+
+    <div class="kv">
+      <div><span class="k">spec</span><span class="v">What you want to be true. You own this.</span></div>
+      <div><span class="k">status</span><span class="v">What is currently true. The system owns this — never write it.</span></div>
+      <div><span class="k">controller</span><span class="v">A loop that watches one kind of object and takes action when spec ≠ status.</span></div>
+    </div>
+
+    <p>You saw the same loop in three different places without it being reimplemented once: the <strong>ReplicaSet controller</strong> replacing a Pod you deleted, the <strong>endpoint controller</strong> wiring new Pod IPs into a Service you never touched, and the <strong>Deployment controller</strong> shifting Pods between ReplicaSets during a rollout.</p>
+
+    <h3>The request path</h3>
+    <p class="tight">Every <code>kubectl apply</code> travels this, in order. Know it by name and sequence.</p>
+<pre><code>authentication  <span class="cmt">→</span>  authorization (RBAC)  <span class="cmt">→</span>  admission control  <span class="cmt">→</span>  etcd
+                                          <span class="cmt">├ mutating   (can change your object)</span>
+                                          <span class="cmt">└ validating (can only accept/reject)</span></code></pre>
+    <p>You met mutating admission without looking for it: the API server added <code>kubernetes.io/metadata.name</code> to your namespaces. <strong>What you submit is not necessarily what gets stored.</strong></p>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ================= ANATOMY ================= -->
+  <section id="anatomy">
+    <h2>Manifest anatomy</h2>
+    <p class="section-note">Four top-level fields, every object, no exceptions worth caring about.</p>
+
+    <div class="kv">
+      <div><span class="k">apiVersion</span><span class="v">Which API group and version this object's schema comes from.</span></div>
+      <div><span class="k">kind</span><span class="v">The object type.</span></div>
+      <div><span class="k">metadata</span><span class="v">Identity — name, namespace, labels, annotations.</span></div>
+      <div><span class="k">spec</span><span class="v">Desired state. <em>ConfigMap and Secret use <code>data</code> instead.</em></span></div>
+    </div>
+
+    <h3>YAML list indentation</h3>
+    <p class="tight">The most common Kubernetes YAML error there is. <strong>The <code>- </code> counts as indentation</strong> — sibling keys align under the <em>first key after the dash</em>, not under the dash.</p>
+<pre><code>containers:
+  - name: web        <span class="cmt">← keys align at this column</span>
+    image: nginx     <span class="hl">✓</span>
+    ports:
+      - containerPort: 80
+
+  - name: web
+  image: nginx       <span class="bad">✗ parse error — dedented out of the list item</span></code></pre>
+
+    <h3>Multi-line strings</h3>
+    <p class="tight">The block scalar <code>|</code> preserves newlines — used constantly for embedded files, scripts and certs.</p>
+<pre><code>data:
+  index.html: |
+    &lt;html&gt;
+      Hello world!
+    &lt;/html&gt;</code></pre>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ================= OBJECTS ================= -->
+  <section id="objects">
+    <h2>Object reference</h2>
+    <p class="section-note">The five you wrote, plus the one the Deployment made for you.</p>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Kind</th><th class="mono">apiVersion</th><th>Scope</th><th>What it does</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Namespace</strong></td><td class="mono">v1</td><td>cluster</td><td>Scopes object <em>names</em>; a handle for RBAC and quotas. <strong>Not</strong> a network or security boundary.</td></tr>
+          <tr><td><strong>Pod</strong></td><td class="mono">v1</td><td>namespaced</td><td>Smallest schedulable unit. One or more containers sharing an IP, port space and volumes.</td></tr>
+          <tr><td><strong>ReplicaSet</strong></td><td class="mono">apps/v1</td><td>namespaced</td><td>Keeps exactly N Pods matching its selector alive. You never write one by hand.</td></tr>
+          <tr><td><strong>Deployment</strong></td><td class="mono">apps/v1</td><td>namespaced</td><td>Manages ReplicaSets to give you rolling updates and rollback.</td></tr>
+          <tr><td><strong>Service</strong></td><td class="mono">v1</td><td>namespaced</td><td>Stable virtual IP + DNS name, load-balancing across Pods that match its selector.</td></tr>
+          <tr><td><strong>ConfigMap</strong></td><td class="mono">v1</td><td>namespaced</td><td>Non-secret config, injected as env vars or mounted as files.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Cluster-scoped vs namespaced</h3>
+    <p class="tight">A cluster-scoped object cannot sit inside a namespace. Setting <code>metadata.namespace</code> on one is a category error.</p>
+<pre><code><span class="cmt"># ask the cluster rather than memorising:</span>
+kubectl api-resources --namespaced=false   <span class="cmt"># Namespace, Node, PersistentVolume,</span>
+                                           <span class="cmt"># ClusterRole, ClusterRoleBinding, StorageClass, CRD</span>
+kubectl api-resources --namespaced=true    <span class="cmt"># everything else</span></code></pre>
+    <p>This split is exactly why RBAC ships two pairs: <code>Role</code>/<code>RoleBinding</code> (namespaced) and <code>ClusterRole</code>/<code>ClusterRoleBinding</code> (cluster-wide).</p>
+
+    <h3>API groups</h3>
+    <p class="tight">No pattern to infer — <code>kubectl explain &lt;kind&gt;</code> gives you the right value.</p>
+    <div class="kv">
+      <div><span class="k">v1</span><span class="v">The <em>core</em> group, which has no prefix. Pod, Service, ConfigMap, Secret, Namespace, Node.</span></div>
+      <div><span class="k">apps/v1</span><span class="v">Deployment, ReplicaSet, StatefulSet, DaemonSet.</span></div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ================= OWNERSHIP ================= -->
+  <section id="ownership">
+    <h2>The ownership chain</h2>
+    <p class="section-note">Three layers, and the names encode the hierarchy.</p>
+
+    <div class="chain">
+      <div class="chain-node">
+        <div class="cn-name">Deployment</div>
+        <div class="cn-desc">Manages versions. Creates a new ReplicaSet whenever the Pod template changes.</div>
+      </div>
+      <div class="chain-link">creates &amp; owns ↓</div>
+      <div class="chain-node">
+        <div class="cn-name">ReplicaSet</div>
+        <div class="cn-desc">Counts Pods matching its selector. Fewer than desired → create. More → delete. That is its entire job.</div>
+      </div>
+      <div class="chain-link">creates &amp; owns ↓</div>
+      <div class="chain-node">
+        <div class="cn-name">Pod</div>
+        <div class="cn-desc">The workload. Gets an ephemeral IP that dies with it.</div>
+      </div>
+    </div>
+
+<pre><code>my-deployment                    <span class="cmt">← you named this</span>
+my-deployment-54bf7b886b         <span class="cmt">← + hash of the Pod template</span>
+my-deployment-54bf7b886b-fdkp6   <span class="cmt">← + random per-Pod suffix</span></code></pre>
+
+    <p><strong>The template hash is the rolling-update mechanism.</strong> Change the template → new hash → new ReplicaSet → Pods shift from old to new. The old ReplicaSet is kept at 0 replicas, which is why <code>rollout undo</code> is near-instant: it just scales the old one back up.</p>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Column</th><th>Means</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">READY</td><td>Pods passing their readiness check. A Pod can be <code>Running</code> but <code>0/1</code> ready — and it receives no traffic.</td></tr>
+          <tr><td class="mono">UP-TO-DATE</td><td>Pods running the current template.</td></tr>
+          <tr><td class="mono">AVAILABLE</td><td>Ready, and stayed ready long enough to count.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <span class="label">Immutable</span>
+      <p>A Deployment's <code>spec.selector</code> cannot be changed after creation. Changing it means delete and recreate.</p>
+    </div>
+
+    <h3>Selector syntax differs by object</h3>
+    <p class="tight">A genuine inconsistency in the API. Services predate the newer selector syntax.</p>
+<pre><code><span class="cmt"># Deployment / ReplicaSet</span>
+selector:
+  matchLabels:
+    app: hello
+
+<span class="cmt"># Service — a plain map, no matchLabels</span>
+selector:
+  app: hello</code></pre>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ================= NETWORKING ================= -->
+  <section id="networking">
+    <h2>Services &amp; DNS</h2>
+    <p class="section-note">Pods get ephemeral IPs. Services are how anything finds anything.</p>
+
+    <p>A Service holds a stable <strong>virtual</strong> IP — no interface anywhere owns that address, and you can't ping it. It exists only as packet-rewriting rules that <code>kube-proxy</code> programs on every Node. An <strong>EndpointSlice</strong> is auto-maintained with the IPs of Pods currently matching the selector.</p>
+
+    <div class="callout">
+      <span class="label">Decoupled by design</span>
+      <p>A Service does <strong>not</strong> know its Deployment exists. It matches labels on Pods, full stop — any Pod carrying the right label gets traffic, whoever created it. Deployment→Pod and Service→Pod are independent relationships, both built on labels.</p>
+      <p>Empty endpoints with healthy Pods = your selector doesn't match your Pod labels. The single most common Service bug.</p>
+    </div>
+
+    <h3>The four types</h3>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Type</th><th>Behaviour</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">ClusterIP</td><td><strong>Default.</strong> Internal-only virtual IP.</td></tr>
+          <tr><td class="mono">NodePort</td><td>ClusterIP <em>plus</em> a high port (30000–32767) opened on every Node.</td></tr>
+          <tr><td class="mono">LoadBalancer</td><td>NodePort <em>plus</em> a cloud provider LB. This is what an Azure Load Balancer is, behind AKS.</td></tr>
+          <tr><td class="mono">ExternalName</td><td>No proxying at all — just a DNS CNAME to an external host.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Each builds on the one above it. That layering is examinable.</p>
+
+    <h3>port vs targetPort</h3>
+    <div class="kv">
+      <div><span class="k">port</span><span class="v">The port <strong>the Service</strong> listens on — what clients dial.</span></div>
+      <div><span class="k">targetPort</span><span class="v">The port <strong>on the Pod</strong> to forward to.</span></div>
+      <div><span class="k">containerPort</span><span class="v">Pure documentation. Opens nothing, publishes nothing, firewalls nothing.</span></div>
+    </div>
+
+    <h3>Cluster DNS</h3>
+<pre><code>&lt;service&gt;.&lt;namespace&gt;.svc.cluster.local
+
+my-service                                <span class="cmt"># from inside the same namespace</span>
+my-service.playground                     <span class="cmt"># from another namespace</span>
+my-service.playground.svc.cluster.local   <span class="cmt"># fully qualified</span></code></pre>
+    <p>Short names resolve because every Pod gets a search domain for its own namespace. CoreDNS holds a record for every Service. <strong>Learn this format verbatim</strong> — it comes up directly.</p>
+
+    <div class="kv">
+      <div><span class="k">Pod CIDR</span><span class="v">Pod IPs — <code>10.42.0.0/16</code> on this k3s cluster. Ephemeral.</span></div>
+      <div><span class="k">Service CIDR</span><span class="v">Service ClusterIPs — <code>10.43.0.0/16</code>. Stable for the Service's lifetime.</span></div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ================= CONFIG ================= -->
+  <section id="config">
+    <h2>Config &amp; secrets</h2>
+    <p class="section-note">One image, many environments. Config is injected at runtime, never baked in.</p>
+
+    <h3>Two ways to consume a ConfigMap — and they behave differently</h3>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th></th><th>Env var</th><th>Mounted volume</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Appears as</strong></td><td><code>$MY_VAR</code></td><td>a file on disk</td></tr>
+          <tr><td><strong>Read when</strong></td><td>once, at container start</td><td>whenever the app reads the file</td></tr>
+          <tr><td><strong>On ConfigMap change</strong></td><td><strong>stale until the Pod restarts</strong></td><td>updates in place, within ~a minute</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Environment variables are handed to a process once at exec time and can never change afterwards. That's a Linux fact, not a Kubernetes limitation. Use <code>kubectl rollout restart</code> to pick up new env values.</p>
+
+    <div class="callout">
+      <span class="label">Gotcha</span>
+      <p>A volume mounted with <code>subPath</code> does <strong>not</strong> receive updates, even as a file. This one costs people entire afternoons.</p>
+    </div>
+
+    <h3>volumes vs volumeMounts</h3>
+    <p class="tight"><code>volumes</code> sits at <em>Pod</em> level and declares what's available. <code>volumeMounts</code> sits at <em>container</em> level and says where that container sees it. The <code>name</code> links them.</p>
+<pre><code>spec:
+  containers:
+    - name: web
+      volumeMounts:                          <span class="cmt"># container level</span>
+        - name: html
+          mountPath: /usr/share/nginx/html
+  volumes:                                   <span class="cmt"># Pod level — sibling of containers</span>
+    - name: html
+      configMap:
+        name: hello-config</code></pre>
+
+    <div class="callout exam">
+      <span class="label">Exam favourite</span>
+      <p>A <strong>ConfigMap is plaintext</strong> in etcd — readable by anyone with <code>get configmap</code> in that namespace.</p>
+      <p>A <strong>Secret is base64-encoded, not encrypted</strong>, by default. Base64 is an encoding, not a security control. The intuitive answer here is the wrong one.</p>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ================= KUBECTL ================= -->
+  <section id="kubectl">
+    <h2>kubectl</h2>
+    <p class="section-note">Grouped by what you're trying to do.</p>
+
+    <h3>Before anything that mutates</h3>
+<pre><code>kubectl config current-context           <span class="cmt"># which cluster am I about to hit?</span>
+kubectl config get-contexts
+
+<span class="cmt"># make the safe context the default — PowerShell profile</span>
+function kp { kubectl --context rancher-desktop @args }</code></pre>
+
+    <div class="callout">
+      <span class="label">Safety</span>
+      <p>This kubeconfig holds two contexts: <code>rancher-desktop</code> (the sandbox) and <code>SHAREDSERVICES-01-AKS</code> (a real employer cluster). Every <code>apply</code>, <code>delete</code>, <code>scale</code> or <code>edit</code> gets an explicit <code>--context rancher-desktop</code>. Relying on the active context is luck, not safety.</p>
+    </div>
+
+    <h3>Validate before applying</h3>
+<pre><code>kubectl apply -f f.yaml --dry-run=client   <span class="cmt"># YAML + schema, locally. Never touches the cluster.</span>
+kubectl apply -f f.yaml --dry-run=server   <span class="cmt"># the API server validates for real, persists nothing</span>
+kubectl diff  -f f.yaml                    <span class="cmt"># the `terraform plan` of Kubernetes</span>
+
+<span class="cmt"># catch silent drops: compare what you sent to what would be stored</span>
+kubectl apply -f f.yaml --dry-run=server -o yaml</code></pre>
+    <p><strong>Dry-run creates nothing.</strong> The word <em>created</em> in its output is a simulation — that's why the object doesn't appear afterwards.</p>
+
+    <h3>apply vs create</h3>
+    <div class="kv">
+      <div><span class="k">create -f</span><span class="v"><strong>Imperative.</strong> "Make this." Fails if it already exists.</span></div>
+      <div><span class="k">apply -f</span><span class="v"><strong>Declarative.</strong> "Make reality match this file." Creates or patches. Idempotent.</span></div>
+    </div>
+    <p><code>apply</code> in a loop against a git repo is essentially what Argo CD and Flux do — which is why GitOps is built on it.</p>
+<pre><code><span class="cmt"># create is still useful as a YAML generator:</span>
+kubectl create deployment demo --image=nginx:1.27-alpine --dry-run=client -o yaml</code></pre>
+
+    <h3>Inspect</h3>
+<pre><code>kubectl get deploy,rs,pods -n playground        <span class="cmt"># all three layers at once</span>
+kubectl get pods -o wide --show-labels          <span class="cmt"># IPs, nodes, labels</span>
+kubectl get pod &lt;name&gt; -o yaml                  <span class="cmt"># see status/ — written by the system</span>
+kubectl get svc,endpointslice -n playground     <span class="cmt"># is the Service actually wired up?</span>
+
+kubectl describe pod &lt;name&gt;                     <span class="cmt"># ← Events at the bottom. Read these first.</span>
+kubectl logs &lt;pod&gt;
+kubectl exec -it &lt;pod&gt; -- sh
+kubectl exec deploy/&lt;name&gt; -- printenv VAR      <span class="cmt"># no quoting to get wrong</span>
+
+kubectl explain deployment.spec.template        <span class="cmt"># the schema, from the cluster itself</span>
+kubectl api-resources</code></pre>
+
+    <h3>Change things</h3>
+<pre><code>kubectl apply  -f k8s/                          <span class="cmt"># the correct default</span>
+kubectl delete -f k8s/01-pod.yaml               <span class="cmt"># delete by file, not by name</span>
+
+kubectl scale deploy/x --replicas=5             <span class="cmt"># ⚠ drift — next apply reverts it</span>
+kubectl rollout restart deploy/x                <span class="cmt"># replace Pods without editing the manifest</span>
+kubectl rollout status  deploy/x
+kubectl rollout history deploy/x
+kubectl rollout undo    deploy/x
+
+kubectl port-forward svc/my-service 8080:80     <span class="cmt"># debug tunnel; bypasses Ingress entirely</span>
+kubectl run tmp --rm -it --image=curlimages/curl --restart=Never -- sh</code></pre>
+
+    <div class="callout">
+      <span class="label">Windows shells</span>
+      <p><code>cmd.exe</code> does not treat <code>'</code> as a quote character — use <code>"double"</code>. PowerShell wants <code>'single'</code>, to stop it expanding <code>$VAR</code> before kubectl sees it. Or sidestep both with <code>-- printenv VAR</code> and <code>-- cat file</code>.</p>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ================= SILENT FAILURES ================= -->
+  <section id="silent">
+    <h2>Where Kubernetes stayed quiet</h2>
+    <p class="section-note">The recurring theme of the session, and the most expensive habit to build. Every one of these applied cleanly and did the wrong thing.</p>
+
+    <ul class="fails">
+      <li>
+        <span class="what">metadata.namespace on a cluster-scoped object</span>
+        <span class="why">Silently dropped. No error, no warning — the stored object simply doesn't have it, and your file now claims an intent the cluster is ignoring.</span>
+      </li>
+      <li>
+        <span class="what">env: - name: GREETING &nbsp;(no valueFrom)</span>
+        <span class="why">Schema-valid. <code>value</code> is optional and defaults to empty string, so Pods start happily and the variable is blank.</span>
+      </li>
+      <li>
+        <span class="what">--dry-run printing "created"</span>
+        <span class="why">Nothing was created. The word is part of a simulation, and the object never existed.</span>
+      </li>
+      <li>
+        <span class="what">kubectl scale against a committed manifest</span>
+        <span class="why">Works instantly, then the next <code>apply</code> silently reverts it. Same failure mode as editing something in the Azure Portal that Terraform owns.</span>
+      </li>
+      <li>
+        <span class="what">A Service whose selector matches nothing</span>
+        <span class="why">A perfectly legal object with an IP and no endpoints. Connections just fail. Indistinguishable at a glance from a Service whose Pods are simply gone.</span>
+      </li>
+      <li>
+        <span class="what">image: nginx (unpinned tag)</span>
+        <span class="why">Resolves to <code>:latest</code> — not a version, a moving target. The same manifest gives different results on different days.</span>
+      </li>
+    </ul>
+
+    <p style="margin-top:1.4rem"><strong>The habit:</strong> when something "works" but doesn't behave, diff what you submitted against what was stored. <code>--dry-run=server -o yaml</code> settles it in seconds.</p>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ================= EXAM ================= -->
+  <section id="exam">
+    <h2>Flagged for the exam</h2>
+    <p class="section-note">Points from this session that KCNA asks about directly.</p>
+
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Claim</th><th>The right answer</th></tr></thead>
+        <tbody>
+          <tr><td>A namespace isolates workloads from each other</td><td><strong>No.</strong> It scopes names and anchors RBAC/quota. Pods across namespaces can reach each other freely until a NetworkPolicy says otherwise.</td></tr>
+          <tr><td>Secrets are encrypted</td><td><strong>No.</strong> Base64-encoded by default. Encryption at rest is a separate thing you enable.</td></tr>
+          <tr><td>Kubernetes schedules containers</td><td><strong>No.</strong> It schedules <em>Pods</em> onto Nodes. The runtime on that Node starts the containers.</td></tr>
+          <tr><td><code>containerPort</code> publishes a port</td><td><strong>No.</strong> It's documentation. The process listens on whatever it binds.</td></tr>
+          <tr><td>A Service routes to a Deployment</td><td><strong>No.</strong> It routes to any Pod matching its label selector, regardless of owner.</td></tr>
+          <tr><td>Rollback re-deploys the old version</td><td><strong>No.</strong> It scales the old ReplicaSet back up — which is why it's near-instant.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Still to cover — not reachable from this project alone</h3>
+    <p class="tight">KCNA is broader than the objects you can build. These need reading alongside the build.</p>
+    <div class="kv">
+      <div><span class="k">landscape</span><span class="v">CNCF projects, maturity levels (sandbox / incubating / graduated), governance.</span></div>
+      <div><span class="k">runtimes</span><span class="v">CRI, OCI, containerd, and where Docker actually sits.</span></div>
+      <div><span class="k">standards</span><span class="v">OCI, CNI, CSI — what each interface separates.</span></div>
+      <div><span class="k">mesh</span><span class="v">Istio / Linkerd — what problem a service mesh solves.</span></div>
+      <div><span class="k">serverless</span><span class="v">Knative, autoscaling patterns.</span></div>
+      <div><span class="k">delivery</span><span class="v">GitOps with Argo CD / Flux.</span></div>
+      <div><span class="k">security</span><span class="v">The 4 Cs, supply chain, admission control as policy.</span></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>KubePlayground — Milestone 1 complete. Next: the FastAPI backend, ServiceAccounts and RBAC.</span>
+    <span class="mono">k3s 1.33.3 · kubectl 1.36</span>
+  </footer>
+
+</div>
