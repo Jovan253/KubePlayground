@@ -91,19 +91,33 @@ Every mutating command (`apply`, `delete`, `scale`, `edit`) gets an explicit
 - [x] Decide stack and working mode
 - [x] Write this roadmap
 
-### ◐ M1 — kubectl fluency + core objects by hand
+### ☑ M1 — kubectl fluency + core objects by hand
 *Goal: never touch the app code until you can build and break these from memory.*
 - [x] Contexts and namespaces: `config get-contexts`, `config current-context`, `get ns`
 - [x] Create the `playground` + `kubeplayground` namespaces **from a YAML file**, not `kubectl create ns`
 - [x] Validation habits: `--dry-run=client` vs `--dry-run=server` vs `kubectl diff`
 - [x] Cluster-scoped vs namespaced objects (`kubectl api-resources --namespaced=false`)
 - [x] Admission control: the server can modify what you submit (`kubernetes.io/metadata.name`)
-- [ ] Write a bare **Pod** manifest; `get`, `describe`, `logs`, `exec`, `delete` it
-- [ ] Write a **Deployment**; observe Deployment → ReplicaSet → Pod ownership
-- [ ] Scale it, delete a Pod by hand, watch the ReplicaSet resurrect it
-- [ ] Write a **Service** (ClusterIP); reach it via `port-forward` and via DNS from another Pod
-- [ ] Write a **ConfigMap**; mount it as env vars and as a volume
-- [ ] Understand `kubectl apply` vs `create` (declarative vs imperative)
+- [x] Write a bare **Pod** manifest; `get`, `describe`, `logs`, `exec`, `port-forward` it
+- [x] YAML list-item indentation rule (keys align under the first key after `- `)
+- [x] Pod phase vs READY count; Pod IP is ephemeral (→ the reason Services exist)
+- [x] `describe` → Events is the first debugging move
+- [x] spec (your intent) vs status (system-written reality)
+- [x] Write a **Deployment**; observe Deployment → ReplicaSet → Pod ownership
+- [x] API groups: core (`v1`) vs `apps/v1`
+- [x] Scale it, delete a Pod by hand, watch the ReplicaSet resurrect it
+- [x] Rolling update: two ReplicaSets, `pod-template-hash`, `rollout status/history/undo`
+- [x] Imperative `kubectl scale` causes drift from the file — the file is the source of truth
+- [x] Write a **Service** (ClusterIP); reach it via `port-forward` and via DNS from another Pod
+- [x] Service selector is a plain map, unlike a Deployment's `selector.matchLabels`
+- [x] `port` vs `targetPort`; Pod CIDR vs Service CIDR; ClusterIP is virtual (kube-proxy rules)
+- [x] EndpointSlice auto-populates from label matches — empty endpoints = selector bug
+- [x] Cluster DNS: `<service>.<namespace>.svc.cluster.local`, short names via search domain
+- [x] Write a **ConfigMap**; mount it as env vars and as a volume
+- [x] Mounted ConfigMap volumes update live; env vars are frozen at container start
+      (`rollout restart` to pick them up). `subPath` mounts never update — gotcha.
+- [x] ConfigMaps are plaintext; Secrets are base64-encoded, **not encrypted**
+- [x] Understand `kubectl apply` vs `create` (declarative vs imperative)
 
 ### ☐ M2 — Backend API, running locally
 *Still outside the cluster — talks to it using your kubeconfig.*
@@ -193,3 +207,11 @@ Newest last. One line per working session — what moved.
   `terraform plan`); `metadata.namespace` on a cluster-scoped object is silently dropped rather
   than rejected — diff submitted-vs-stored with `--dry-run=server -o yaml` to catch that class of
   bug; the API server adds `kubernetes.io/metadata.name` via mutating admission. Next: a bare Pod.
+- **2026-08-26** — **M1 complete.** Hand-wrote and applied Pod, Deployment, Service and ConfigMap
+  in `playground`. Saw self-healing (deleted a Pod, ReplicaSet replaced it), a rolling update
+  across two ReplicaSets with `pod-template-hash`, `rollout undo`, Service discovery via cluster
+  DNS from a throwaway curl Pod, and the ConfigMap volume-vs-env update asymmetry.
+  Recurring theme worth remembering: **Kubernetes accepts invalid intent silently** — a
+  cluster-scoped object with `metadata.namespace`, and an `env` entry with no `valueFrom`, both
+  applied cleanly and did nothing. Diff submitted-vs-stored when something "works" but doesn't.
+  Next: M2, the FastAPI backend.
