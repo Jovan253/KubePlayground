@@ -21,7 +21,7 @@ rules:
   # These are the objects backing /api/pods, /api/services, /api/namespaces,
   # /api/nodes.
   - apiGroups: [""]
-    resources: ["pods", "services", "namespaces", "nodes"]
+    resources: ["pods", "services", "namespaces", "nodes", "events"]
     # `watch` is unused today; M5's live updates need it, and adding it now
     # avoids a second RBAC round-trip later.
     verbs: ["get", "list", "watch"]
@@ -36,6 +36,10 @@ rules:
   # Deployments live in the "apps" group, not core.
   - apiGroups: ["apps"]
     resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
     verbs: ["get", "list", "watch"]
 
   # The scale button. `patch` on deployments/scale lets the app change the

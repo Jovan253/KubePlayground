@@ -22,6 +22,7 @@
     --ok:        #4CAF7D;
     --warn:      #D9A441;
     --bad:       #D9634A;
+    --dim:       #4A5B6B;
 
     --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
     --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -44,9 +45,7 @@
     max-width: 1240px; margin: 0 auto; padding: 1.5rem 1.25rem 1.25rem;
     display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: baseline;
   }
-  h1 {
-    font-size: 1.35rem; margin: 0; letter-spacing: -.02em; font-weight: 650;
-  }
+  h1 { font-size: 1.35rem; margin: 0; letter-spacing: -.02em; font-weight: 650; }
   h1 span { color: var(--accent); }
   .facts { display: flex; flex-wrap: wrap; gap: .35rem 1.4rem; font-family: var(--mono); font-size: .76rem; color: var(--muted); }
   .facts b { color: var(--ink-soft); font-weight: 500; }
@@ -76,56 +75,151 @@
   }
 
   /* ---------- sections ---------- */
-  section { margin-bottom: 2.25rem; }
+  section { margin-bottom: 2.5rem; }
   .sec-head {
     display: flex; align-items: baseline; gap: .75rem;
     border-bottom: 1px solid var(--rule-soft); padding-bottom: .5rem; margin-bottom: 1rem;
   }
   h2 { font-size: .82rem; text-transform: uppercase; letter-spacing: .1em; margin: 0; color: var(--ink-soft); font-weight: 650; }
   .count { font-family: var(--mono); font-size: .74rem; color: var(--muted); }
+  .legend { margin-left: auto; font-family: var(--mono); font-size: .7rem; color: var(--muted); }
+  .legend b { color: var(--ink-soft); font-weight: 500; }
 
-  /* ---------- deployments ---------- */
-  .deploys { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
-  .deploy {
-    background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
-    padding: .85rem 1rem; display: flex; flex-direction: column; gap: .55rem;
+  /* ---------- ownership tree ----------
+     Deployment › ReplicaSet › Pod. The indent + connector rails are the whole
+     point: they make the ownership chain visible rather than implied. */
+  .tree { display: flex; flex-direction: column; gap: 1rem; }
+
+  .owner {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 7px;
+    overflow: hidden;
   }
-  .deploy-top { display: flex; align-items: baseline; gap: .5rem; }
-  .deploy-name { font-family: var(--mono); font-size: .88rem; font-weight: 500; }
-  .deploy-ns { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
-  .deploy-img { font-family: var(--mono); font-size: .72rem; color: var(--ink-soft); word-break: break-all; }
+  .owner-head { padding: .8rem 1rem .75rem; display: flex; flex-direction: column; gap: .5rem; }
+  .owner-title { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+  .kind-tag {
+    font-family: var(--mono); font-size: .62rem; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    padding: .1rem .4rem; border-radius: 3px;
+  }
+  .kind-tag.rs   { color: var(--ink-soft); border-color: var(--rule); background: var(--panel-2); }
+  .kind-tag.other{ color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+                   background: color-mix(in srgb, var(--warn) 10%, transparent); }
+  .owner-name { font-family: var(--mono); font-size: .9rem; font-weight: 500; }
+  .owner-ns   { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
+  .owner-img  { font-family: var(--mono); font-size: .72rem; color: var(--ink-soft); word-break: break-all; }
 
-  .replica-row { display: flex; align-items: center; gap: .6rem; margin-top: .15rem; }
-  .replica-count { font-family: var(--mono); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+  .replica-row { display: flex; align-items: center; gap: .55rem; }
+  .replica-count { font-family: var(--mono); font-size: 1.02rem; font-variant-numeric: tabular-nums; }
   .replica-count .sep { color: var(--muted); }
-  .scale-btn { width: 2rem; padding: .2rem 0; text-align: center; font-family: var(--mono); font-size: .95rem; line-height: 1; }
-  .replica-label { font-size: .72rem; color: var(--muted); margin-left: auto; font-family: var(--mono); }
+  .scale-btn { width: 1.9rem; padding: .18rem 0; text-align: center; font-family: var(--mono); font-size: .95rem; line-height: 1; }
+  .replica-label { font-size: .71rem; color: var(--muted); margin-left: auto; font-family: var(--mono); }
 
-  /* progress bar: ready vs desired, so a mid-rollout gap is visible at a glance */
   .bar { height: 3px; background: var(--rule-soft); border-radius: 2px; overflow: hidden; }
   .bar > i { display: block; height: 100%; background: var(--ok); transition: width .3s; }
   .bar.partial > i { background: var(--warn); }
 
-  /* ---------- pods ---------- */
-  .pods { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+  /* the nested rail */
+  .children {
+    border-top: 1px solid var(--rule-soft);
+    background: color-mix(in srgb, var(--bg) 55%, var(--panel));
+    padding: .7rem 1rem .8rem 1.6rem;
+    display: flex; flex-direction: column; gap: .6rem;
+  }
+  .rs {
+    border-left: 2px solid var(--rule); padding-left: .9rem;
+    display: flex; flex-direction: column; gap: .4rem;
+    position: relative;
+  }
+  .rs.active { border-left-color: var(--ok); }
+  .rs.superseded { border-left-color: var(--dim); }
+  .rs-head { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+  .rs-name { font-family: var(--mono); font-size: .76rem; color: var(--ink-soft); word-break: break-all; }
+  .rs-meta { font-family: var(--mono); font-size: .68rem; color: var(--muted); }
+  .rs-state {
+    font-family: var(--mono); font-size: .62rem; letter-spacing: .07em; text-transform: uppercase;
+    padding: .05rem .35rem; border-radius: 3px; border: 1px solid var(--rule); color: var(--muted);
+  }
+  .rs-state.active { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+
+  .pod-row { display: flex; flex-wrap: wrap; gap: .4rem; }
   .pod {
     background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--muted);
-    border-radius: 5px; padding: .55rem .7rem; display: flex; flex-direction: column; gap: .18rem;
+    border-radius: 4px; padding: .35rem .55rem; min-width: 0;
+    display: flex; flex-direction: column; gap: .1rem;
   }
   .pod.running   { border-left-color: var(--ok); }
   .pod.pending   { border-left-color: var(--warn); }
   .pod.failed    { border-left-color: var(--bad); }
   .pod.succeeded { border-left-color: var(--accent); }
-  .pod-name { font-family: var(--mono); font-size: .78rem; word-break: break-all; }
-  .pod-meta { font-family: var(--mono); font-size: .68rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: .1rem .7rem; }
+  .pod-name { font-family: var(--mono); font-size: .71rem; word-break: break-all; }
+  .pod-meta { font-family: var(--mono); font-size: .64rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: .1rem .55rem; }
   .pod-meta .restarts { color: var(--warn); }
   .pod-meta .notready { color: var(--bad); }
+  .no-pods { font-family: var(--mono); font-size: .68rem; color: var(--muted); font-style: italic; }
 
   /* ---------- nodes ---------- */
   .nodes { display: grid; gap: .6rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
   .node { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: .7rem .9rem; }
   .node-name { font-family: var(--mono); font-size: .85rem; }
   .node-meta { font-family: var(--mono); font-size: .7rem; color: var(--muted); margin-top: .2rem; }
+
+  /* ---------- pod detail drawer ---------- */
+  .pod { cursor: pointer; transition: border-color .12s, background .12s; }
+  .pod:hover { background: var(--panel-2); border-color: var(--rule-strong, var(--accent)); }
+
+  #scrim {
+    position: fixed; inset: 0; background: rgba(4, 8, 11, .6);
+    opacity: 0; pointer-events: none; transition: opacity .18s; z-index: 40;
+  }
+  #scrim.open { opacity: 1; pointer-events: auto; }
+
+  #drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100%);
+    background: var(--bg); border-left: 1px solid var(--rule);
+    transform: translateX(100%); transition: transform .22s ease; z-index: 50;
+    display: flex; flex-direction: column;
+  }
+  #drawer.open { transform: none; }
+  @media (prefers-reduced-motion: reduce) { #drawer { transition: none; } }
+
+  .drawer-head {
+    padding: 1rem 1.15rem .85rem; border-bottom: 1px solid var(--rule);
+    display: flex; align-items: flex-start; gap: 1rem; background: var(--panel);
+  }
+  .drawer-title { font-family: var(--mono); font-size: .92rem; word-break: break-all; }
+  .drawer-sub { font-family: var(--mono); font-size: .7rem; color: var(--muted); margin-top: .2rem; }
+  .drawer-close { margin-left: auto; flex-shrink: 0; }
+
+  .drawer-body { overflow-y: auto; padding: 1.15rem; display: flex; flex-direction: column; gap: 1.5rem; }
+  .drawer-body h3 {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--ink-soft); margin: 0 0 .5rem; font-weight: 650;
+  }
+
+  .facts-grid { display: grid; grid-template-columns: 8.5rem 1fr; gap: .3rem .9rem; font-family: var(--mono); font-size: .75rem; }
+  .facts-grid dt { color: var(--muted); }
+  .facts-grid dd { margin: 0; word-break: break-all; }
+
+  .events { display: flex; flex-direction: column; gap: .4rem; }
+  .event {
+    border-left: 2px solid var(--dim); padding: .35rem .6rem;
+    background: var(--panel); border-radius: 0 4px 4px 0;
+  }
+  .event.warning { border-left-color: var(--warn); }
+  .event-top { display: flex; align-items: baseline; gap: .55rem; flex-wrap: wrap; font-family: var(--mono); font-size: .7rem; }
+  .event-reason { color: var(--ink); font-weight: 500; }
+  .event.warning .event-reason { color: var(--warn); }
+  .event-meta { color: var(--muted); }
+  .event-msg { font-size: .74rem; color: var(--ink-soft); margin-top: .12rem; word-break: break-word; }
+
+  pre.logs {
+    font-family: var(--mono); font-size: .7rem; line-height: 1.55;
+    background: #080C10; border: 1px solid var(--rule); border-radius: 5px;
+    padding: .7rem .85rem; margin: 0; max-height: 22rem; overflow: auto;
+    color: var(--ink-soft); white-space: pre-wrap; word-break: break-all;
+  }
+  .loading { font-family: var(--mono); font-size: .72rem; color: var(--muted); }
 
   /* ---------- misc ---------- */
   .empty { color: var(--muted); font-family: var(--mono); font-size: .78rem; padding: 1rem 0; }
@@ -158,21 +252,14 @@
 
   <section>
     <div class="sec-head">
-      <h2>Deployments</h2>
-      <span class="count" id="deploy-count"></span>
-      <div style="margin-left:auto">
+      <h2>Workloads</h2>
+      <span class="count" id="tree-count"></span>
+      <span class="legend"><b>Deployment</b> › <b>ReplicaSet</b> › <b>Pod</b> — indent shows ownership</span>
+      <div style="margin-left:1rem">
         <select id="ns"><option value="">all namespaces</option></select>
       </div>
     </div>
-    <div class="deploys" id="deploys"></div>
-  </section>
-
-  <section>
-    <div class="sec-head">
-      <h2>Pods</h2>
-      <span class="count" id="pod-count"></span>
-    </div>
-    <div class="pods" id="pods"></div>
+    <div class="tree" id="tree"></div>
   </section>
 
   <section>
@@ -184,6 +271,31 @@
   </section>
 </div>
 
+<div id="scrim"></div>
+<aside id="drawer" aria-hidden="true" aria-label="Pod detail">
+  <div class="drawer-head">
+    <div>
+      <div class="drawer-title" id="d-name">—</div>
+      <div class="drawer-sub" id="d-sub"></div>
+    </div>
+    <button class="drawer-close" id="d-close">Close</button>
+  </div>
+  <div class="drawer-body">
+    <div>
+      <h3>Details</h3>
+      <dl class="facts-grid" id="d-facts"></dl>
+    </div>
+    <div>
+      <h3>Events <span class="event-meta" style="text-transform:none;letter-spacing:0">— the bottom of <code>kubectl describe</code></span></h3>
+      <div class="events" id="d-events"><span class="loading">loading…</span></div>
+    </div>
+    <div>
+      <h3>Logs <span class="event-meta" style="text-transform:none;letter-spacing:0">— last 200 lines</span></h3>
+      <pre class="logs" id="d-logs">loading…</pre>
+    </div>
+  </div>
+</aside>
+
 <script>
 'use strict';
 
@@ -193,6 +305,7 @@ let namespace = '';
 let inFlight = false;
 
 const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
@@ -200,18 +313,14 @@ async function api(path, opts) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail || detail; } catch (_) {}
     // 403 here means the ServiceAccount's ClusterRole is missing a verb —
-    // surface it verbatim rather than showing an empty list.
+    // surface it verbatim rather than silently showing an empty list.
     throw new Error(`${res.status} ${path} — ${detail}`);
   }
   return res.json();
 }
 
-function showError(msg) {
-  const el = $('error');
-  el.textContent = msg;
-  el.classList.add('show');
-}
-function clearError() { $('error').classList.remove('show'); }
+const showError = (msg) => { const e = $('error'); e.textContent = msg; e.classList.add('show'); };
+const clearError = () => $('error').classList.remove('show');
 
 function age(sec) {
   if (sec == null) return '—';
@@ -222,12 +331,15 @@ function age(sec) {
 }
 
 const qs = () => (namespace ? `?namespace=${encodeURIComponent(namespace)}` : '');
+// ownerReferences carry no namespace — an owner is always in the same
+// namespace as the object it owns, so namespace+kind+name is the real key.
+const key = (ns, kind, name) => `${ns}/${kind}/${name}`;
 
 function renderFacts(info) {
   $('facts').innerHTML =
-    `<span>kubernetes <b>${info.gitVersion}</b></span>` +
+    `<span>kubernetes <b>${esc(info.gitVersion)}</b></span>` +
     `<span>nodes <b>${info.nodeCount}</b></span>` +
-    `<span>${info.platform}</span>`;
+    `<span>${esc(info.platform)}</span>`;
   $('mode').textContent = info.mode.startsWith('in-cluster') ? 'in-cluster' : 'kubeconfig';
 }
 
@@ -237,92 +349,284 @@ function renderNamespaces(list) {
   const current = Array.from(sel.options).slice(1).map(o => o.value);
   if (JSON.stringify(wanted) === JSON.stringify(current)) return;  // don't clobber focus
   sel.innerHTML = '<option value="">all namespaces</option>' +
-    wanted.map(n => `<option value="${n}">${n}</option>`).join('');
+    wanted.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
   sel.value = namespace;
 }
 
-function renderDeployments(list) {
-  $('deploy-count').textContent = list.length ? `${list.length} total` : '';
-  const el = $('deploys');
-  if (!list.length) { el.innerHTML = '<div class="empty">no deployments</div>'; return; }
+function podChip(p) {
+  const [r, t] = p.ready.split('/').map(Number);
+  const notReady = t > 0 && r < t;
+  return `
+    <div class="pod ${esc((p.phase || '').toLowerCase())}" role="button" tabindex="0"
+         data-ns="${esc(p.namespace)}" data-name="${esc(p.name)}">
+      <div class="pod-name">${esc(p.name)}</div>
+      <div class="pod-meta">
+        <span class="${notReady ? 'notready' : ''}">${esc(p.phase)} ${esc(p.ready)}</span>
+        ${p.restarts ? `<span class="restarts">↺ ${p.restarts}</span>` : ''}
+        <span>${esc(p.podIP || '—')}</span>
+        <span>${age(p.ageSeconds)}</span>
+      </div>
+    </div>`;
+}
 
-  el.innerHTML = list.map(d => {
-    const pct = d.desired ? Math.round((d.ready / d.desired) * 100) : 0;
-    const partial = d.ready !== d.desired ? ' partial' : '';
+function deploymentCard(d, replicaSets, podsByOwner) {
+  const pct = d.desired ? Math.round((d.ready / d.desired) * 100) : 0;
+  const partial = d.ready !== d.desired ? ' partial' : '';
+
+  // Newest revision first, so the ReplicaSet currently serving traffic is at
+  // the top and superseded ones read as history below it.
+  const sets = replicaSets
+    .slice()
+    .sort((a, b) => Number(b.revision || 0) - Number(a.revision || 0));
+
+  const children = sets.length ? sets.map(rs => {
+    const pods = podsByOwner.get(key(rs.namespace, 'ReplicaSet', rs.name)) || [];
+    const active = rs.desired > 0;
     return `
-      <div class="deploy">
-        <div class="deploy-top">
-          <span class="deploy-name">${d.name}</span>
-          <span class="deploy-ns">${d.namespace}</span>
+      <div class="rs ${active ? 'active' : 'superseded'}">
+        <div class="rs-head">
+          <span class="kind-tag rs">ReplicaSet</span>
+          <span class="rs-name">${esc(rs.name)}</span>
+          <span class="rs-state ${active ? 'active' : ''}">${active ? 'active' : 'superseded'}</span>
+          <span class="rs-meta">rev ${esc(rs.revision || '?')} · ${rs.ready}/${rs.desired} · ${esc(rs.images.join(', '))}</span>
         </div>
-        <div class="deploy-img">${d.images.join(', ')}</div>
+        <div class="pod-row">
+          ${pods.length ? pods.map(podChip).join('')
+                        : '<span class="no-pods">no pods — scaled to zero</span>'}
+        </div>
+      </div>`;
+  }).join('') : '<span class="no-pods">no replicasets</span>';
+
+  return `
+    <div class="owner">
+      <div class="owner-head">
+        <div class="owner-title">
+          <span class="kind-tag">Deployment</span>
+          <span class="owner-name">${esc(d.name)}</span>
+          <span class="owner-ns">${esc(d.namespace)}</span>
+        </div>
+        <div class="owner-img">${esc(d.images.join(', '))}</div>
         <div class="bar${partial}"><i style="width:${pct}%"></i></div>
         <div class="replica-row">
-          <button class="scale-btn" data-ns="${d.namespace}" data-name="${d.name}"
+          <button class="scale-btn" data-ns="${esc(d.namespace)}" data-name="${esc(d.name)}"
                   data-to="${Math.max(0, d.desired - 1)}"
                   ${d.desired <= 0 ? 'disabled' : ''} title="scale down">&minus;</button>
           <span class="replica-count">${d.ready}<span class="sep">/</span>${d.desired}</span>
-          <button class="scale-btn" data-ns="${d.namespace}" data-name="${d.name}"
+          <button class="scale-btn" data-ns="${esc(d.namespace)}" data-name="${esc(d.name)}"
                   data-to="${d.desired + 1}"
                   ${d.desired >= 20 ? 'disabled' : ''} title="scale up">+</button>
           <span class="replica-label">ready / desired · ${age(d.ageSeconds)}</span>
         </div>
-      </div>`;
-  }).join('');
+      </div>
+      <div class="children">${children}</div>
+    </div>`;
 }
 
-function renderPods(list) {
-  $('pod-count').textContent = list.length ? `${list.length} total` : '';
-  const el = $('pods');
-  if (!list.length) { el.innerHTML = '<div class="empty">no pods</div>'; return; }
-
-  el.innerHTML = list.map(p => {
-    const [r, t] = p.ready.split('/').map(Number);
-    const notReady = t > 0 && r < t;
-    return `
-      <div class="pod ${(p.phase || '').toLowerCase()}">
-        <div class="pod-name">${p.name}</div>
-        <div class="pod-meta">
-          <span>${p.namespace}</span>
-          <span class="${notReady ? 'notready' : ''}">${p.phase} ${p.ready}</span>
-          ${p.restarts ? `<span class="restarts">↺ ${p.restarts}</span>` : ''}
-          <span>${p.podIP || '—'}</span>
-          <span>${age(p.ageSeconds)}</span>
+function otherOwnerCard(kind, name, ns, pods) {
+  return `
+    <div class="owner">
+      <div class="owner-head">
+        <div class="owner-title">
+          <span class="kind-tag other">${esc(kind)}</span>
+          <span class="owner-name">${esc(name)}</span>
+          <span class="owner-ns">${esc(ns)}</span>
         </div>
-      </div>`;
-  }).join('');
+      </div>
+      <div class="children">
+        <div class="rs active"><div class="pod-row">${pods.map(podChip).join('')}</div></div>
+      </div>
+    </div>`;
+}
+
+function renderTree(deploys, replicasets, pods) {
+  // index: owner key -> children
+  const podsByOwner = new Map();
+  const orphanPods = [];
+  for (const p of pods) {
+    const owner = p.ownedBy[0];
+    if (!owner) { orphanPods.push(p); continue; }
+    const k = key(p.namespace, owner.kind, owner.name);
+    if (!podsByOwner.has(k)) podsByOwner.set(k, []);
+    podsByOwner.get(k).push(p);
+  }
+
+  const rsByDeployment = new Map();
+  const claimedRS = new Set();
+  for (const rs of replicasets) {
+    const owner = rs.ownedBy[0];
+    if (!owner || owner.kind !== 'Deployment') continue;
+    const k = key(rs.namespace, 'Deployment', owner.name);
+    if (!rsByDeployment.has(k)) rsByDeployment.set(k, []);
+    rsByDeployment.get(k).push(rs);
+    claimedRS.add(key(rs.namespace, 'ReplicaSet', rs.name));
+  }
+
+  const blocks = [];
+
+  for (const d of deploys) {
+    const sets = rsByDeployment.get(key(d.namespace, 'Deployment', d.name)) || [];
+    blocks.push(deploymentCard(d, sets, podsByOwner));
+  }
+
+  // Pods owned by something that isn't a Deployment-managed ReplicaSet:
+  // DaemonSets, StatefulSets, Jobs, or a bare ReplicaSet with no Deployment.
+  const otherOwners = new Map();
+  for (const [k, group] of podsByOwner) {
+    if (claimedRS.has(k)) continue;
+    const [ns, kind, name] = k.split('/');
+    otherOwners.set(k, { ns, kind, name, pods: group });
+  }
+  for (const o of otherOwners.values()) {
+    blocks.push(otherOwnerCard(o.kind, o.name, o.ns, o.pods));
+  }
+
+  // Bare Pods — nothing is watching these. Delete one and it stays deleted.
+  if (orphanPods.length) {
+    blocks.push(`
+      <div class="owner">
+        <div class="owner-head">
+          <div class="owner-title">
+            <span class="kind-tag other">standalone</span>
+            <span class="owner-name">unmanaged pods</span>
+            <span class="owner-ns">no controller — not replaced if they die</span>
+          </div>
+        </div>
+        <div class="children">
+          <div class="rs superseded"><div class="pod-row">${orphanPods.map(podChip).join('')}</div></div>
+        </div>
+      </div>`);
+  }
+
+  $('tree-count').textContent =
+    `${deploys.length} deployments · ${replicasets.length} replicasets · ${pods.length} pods`;
+  $('tree').innerHTML = blocks.length ? blocks.join('') : '<div class="empty">nothing here</div>';
 }
 
 function renderNodes(list) {
   $('node-count').textContent = list.length ? `${list.length} total` : '';
   $('nodes').innerHTML = list.map(n => `
     <div class="node">
-      <div class="node-name">${n.name}</div>
+      <div class="node-name">${esc(n.name)}</div>
       <div class="node-meta">
         ${n.ready === 'True' ? 'Ready' : 'NotReady'} ·
-        ${n.roles.join(',') || 'worker'} · ${n.kubeletVersion}<br>
-        ${n.capacity.cpu} cpu · ${n.capacity.memory} · max ${n.capacity.pods} pods · up ${age(n.ageSeconds)}
+        ${esc(n.roles.join(',') || 'worker')} · ${esc(n.kubeletVersion)}<br>
+        ${esc(n.capacity.cpu)} cpu · ${esc(n.capacity.memory)} · max ${esc(n.capacity.pods)} pods · up ${age(n.ageSeconds)}
       </div>
     </div>`).join('');
 }
+
+// ---------- pod detail drawer ----------
+let openPod = null;     // {ns, name} while the drawer is showing
+let lastPods = [];      // most recent /api/pods result, for the Details block
+
+function openDrawer(ns, name) {
+  openPod = { ns, name };
+  $('d-name').textContent = name;
+  $('d-sub').textContent = ns;
+  $('d-facts').innerHTML = '';
+  $('d-events').innerHTML = '<span class="loading">loading…</span>';
+  $('d-logs').textContent = 'loading…';
+  $('drawer').classList.add('open');
+  $('drawer').setAttribute('aria-hidden', 'false');
+  $('scrim').classList.add('open');
+  $('d-close').focus();
+  loadPodDetail();
+}
+
+function closeDrawer() {
+  openPod = null;
+  $('drawer').classList.remove('open');
+  $('drawer').setAttribute('aria-hidden', 'true');
+  $('scrim').classList.remove('open');
+}
+
+function renderPodFacts(p) {
+  if (!p) { $('d-facts').innerHTML = '<dd class="loading">pod no longer exists</dd>'; return; }
+  const owner = p.ownedBy[0];
+  const rows = [
+    ['phase', p.phase],
+    ['ready', p.ready],
+    ['restarts', p.restarts],
+    ['pod IP', p.podIP || '—'],
+    ['node', p.node || '—'],
+    ['owned by', owner ? `${owner.kind}/${owner.name}` : 'nothing — bare pod'],
+    ['images', p.images.join(', ')],
+    ['labels', Object.entries(p.labels).map(([k, v]) => `${k}=${v}`).join(' ') || '—'],
+    ['age', age(p.ageSeconds)],
+  ];
+  $('d-facts').innerHTML = rows
+    .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`)
+    .join('');
+}
+
+async function loadPodDetail() {
+  if (!openPod) return;
+  const { ns, name } = openPod;
+
+  renderPodFacts(lastPods.find(p => p.namespace === ns && p.name === name));
+
+  // Events and logs are independent — one failing shouldn't blank the other,
+  // so they're settled separately rather than with Promise.all.
+  const [ev, lg] = await Promise.allSettled([
+    api(`/api/pods/${ns}/${name}/events`),
+    api(`/api/pods/${ns}/${name}/logs?tail=200`),
+  ]);
+  if (!openPod || openPod.ns !== ns || openPod.name !== name) return;  // switched pods mid-flight
+
+  if (ev.status === 'fulfilled') {
+    $('d-events').innerHTML = ev.value.length
+      ? ev.value.map(e => `
+          <div class="event ${e.type === 'Warning' ? 'warning' : ''}">
+            <div class="event-top">
+              <span class="event-reason">${esc(e.reason)}</span>
+              <span class="event-meta">${esc(e.source || '')} · ${age(e.ageSeconds)} ago${e.count > 1 ? ` · ×${e.count}` : ''}</span>
+            </div>
+            <div class="event-msg">${esc(e.message)}</div>
+          </div>`).join('')
+      : '<span class="loading">no recent events — they are garbage-collected after about an hour</span>';
+  } else {
+    $('d-events').innerHTML = `<span class="loading">${esc(ev.reason.message)}</span>`;
+  }
+
+  if (lg.status === 'fulfilled') {
+    $('d-logs').textContent = lg.value.logs.trim() || '(no output)';
+  } else {
+    $('d-logs').textContent = lg.reason.message;
+  }
+}
+
+$('tree').addEventListener('click', (ev) => {
+  const pod = ev.target.closest('.pod');
+  if (pod) openDrawer(pod.dataset.ns, pod.dataset.name);
+});
+$('tree').addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  const pod = ev.target.closest('.pod');
+  if (pod) { ev.preventDefault(); openDrawer(pod.dataset.ns, pod.dataset.name); }
+});
+$('d-close').addEventListener('click', closeDrawer);
+$('scrim').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeDrawer(); });
 
 async function refresh() {
   if (inFlight) return;
   inFlight = true;
   try {
-    const [info, namespaces, deploys, pods, nodes] = await Promise.all([
+    const [info, namespaces, deploys, replicasets, pods, nodes] = await Promise.all([
       api('/api/cluster'),
       api('/api/namespaces'),
       api('/api/deployments' + qs()),
+      api('/api/replicasets' + qs()),
       api('/api/pods' + qs()),
       api('/api/nodes'),
     ]);
+    lastPods = pods;
     renderFacts(info);
     renderNamespaces(namespaces);
-    renderDeployments(deploys);
-    renderPods(pods);
+    renderTree(deploys, replicasets, pods);
     renderNodes(nodes);
     clearError();
+    if (openPod) loadPodDetail();   // keep the drawer live too
   } catch (err) {
     showError(err.message);
   } finally {
@@ -330,9 +634,8 @@ async function refresh() {
   }
 }
 
-// Scale buttons are bound by delegation, so re-rendering the list doesn't
-// orphan handlers.
-$('deploys').addEventListener('click', async (ev) => {
+// Delegated, so re-rendering the tree doesn't orphan handlers.
+$('tree').addEventListener('click', async (ev) => {
   const btn = ev.target.closest('.scale-btn');
   if (!btn) return;
   btn.disabled = true;
@@ -342,7 +645,7 @@ $('deploys').addEventListener('click', async (ev) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ replicas: Number(btn.dataset.to) }),
     });
-    await refresh();   // show the new desired count immediately
+    await refresh();
   } catch (err) {
     showError(err.message);
     btn.disabled = false;

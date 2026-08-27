@@ -15,6 +15,7 @@ behaviour, and it decides by looking for a file that only exists inside a Pod.
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import os
 from typing import Any
@@ -112,14 +113,16 @@ def k8s_call(fn, *args, **kwargs):
         ) from exc
 
 
-def age_seconds(obj: Any) -> float | None:
-    """Seconds since creation, computed from the server-set timestamp."""
-    ts = getattr(obj.metadata, "creation_timestamp", None)
+def since(ts: dt.datetime | None) -> float | None:
+    """Seconds elapsed since a server-set timestamp (which is always UTC)."""
     if ts is None:
         return None
-    import datetime as _dt
+    return (dt.datetime.now(dt.timezone.utc) - ts).total_seconds()
 
-    return (_dt.datetime.now(_dt.timezone.utc) - ts).total_seconds()
+
+def age_seconds(obj: Any) -> float | None:
+    """Seconds since the object was created."""
+    return since(getattr(obj.metadata, "creation_timestamp", None))
 
 
 # NOTE: these are `def`, not `async def`, on purpose. The kubernetes client is
@@ -254,6 +257,43 @@ def list_deployments(namespace: str | None = Query(None)) -> list[dict]:
     ]
 
 
+@app.get("/api/replicasets")
+def list_replicasets(namespace: str | None = Query(None)) -> list[dict]:
+    """The middle layer of the ownership chain.
+
+    Without this the UI can't connect a Deployment to its Pods: a Pod's
+    ownerReferences point at a ReplicaSet, and the ReplicaSet's point at the
+    Deployment. Two hops, so both need to be readable.
+    """
+    if namespace:
+        rs = k8s_call(apps_v1.list_namespaced_replica_set, namespace)
+    else:
+        rs = k8s_call(apps_v1.list_replica_set_for_all_namespaces)
+
+    return [
+        {
+            "name": r.metadata.name,
+            "namespace": r.metadata.namespace,
+            "desired": r.spec.replicas or 0,
+            "current": r.status.replicas or 0,
+            "ready": r.status.ready_replicas or 0,
+            # The Deployment stamps an incrementing revision on each ReplicaSet
+            # it creates — this is what `kubectl rollout history` reads.
+            "revision": (r.metadata.annotations or {}).get(
+                "deployment.kubernetes.io/revision"
+            ),
+            "podTemplateHash": (r.metadata.labels or {}).get("pod-template-hash"),
+            "images": [c.image for c in r.spec.template.spec.containers],
+            "ownedBy": [
+                {"kind": o.kind, "name": o.name}
+                for o in (r.metadata.owner_references or [])
+            ],
+            "ageSeconds": age_seconds(r),
+        }
+        for r in rs.items
+    ]
+
+
 @app.get("/api/services")
 def list_services(namespace: str | None = Query(None)) -> list[dict]:
     if namespace:
@@ -286,6 +326,46 @@ def pod_logs(namespace: str, name: str, tail: int = Query(200, ge=1, le=5000)) -
         core_v1.read_namespaced_pod_log, name=name, namespace=namespace, tail_lines=tail
     )
     return {"namespace": namespace, "name": name, "logs": logs}
+
+
+@app.get("/api/pods/{namespace}/{name}/events")
+def pod_events(namespace: str, name: str) -> list[dict]:
+    """Events for one Pod — the list at the bottom of `kubectl describe`.
+
+    Events are their own objects in the core group, not part of the Pod, so
+    they need a separate RBAC grant. They're filtered server-side with a FIELD
+    selector (matching on a value inside the object) rather than a LABEL
+    selector — events carry no useful labels.
+
+    Note: events are garbage-collected after about an hour by default, so an
+    empty list means "nothing happened recently", not "nothing ever happened".
+    """
+    events = k8s_call(
+        core_v1.list_namespaced_event,
+        namespace,
+        field_selector=f"involvedObject.name={name}",
+    )
+
+    def when(e):
+        return e.last_timestamp or e.event_time or e.first_timestamp
+
+    items = sorted(
+        events.items,
+        key=lambda e: when(e).timestamp() if when(e) else 0,
+        reverse=True,
+    )
+    return [
+        {
+            # "Normal" or "Warning" — Warning is what you scan for.
+            "type": e.type,
+            "reason": e.reason,
+            "message": e.message,
+            "count": e.count or 1,
+            "source": (e.source.component if e.source else None),
+            "ageSeconds": since(when(e)),
+        }
+        for e in items
+    ]
 
 
 class ScaleRequest(BaseModel):

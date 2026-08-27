@@ -156,12 +156,20 @@ Every mutating command (`apply`, `delete`, `scale`, `edit`) gets an explicit
 - [x] Ingress YAML nesting: `rules`/`paths` are lists, `http`/`backend`/`service`/`port` are maps
 - [x] `pathType` is required — `Prefix` / `Exact` / `ImplementationSpecific`
 
-### ☐ M5 — The frontend
-- [ ] Static HTML/JS served by FastAPI
-- [ ] Live-updating grid of Pods with phase/status colouring
-- [ ] Click a Pod → details, events, logs
-- [ ] Scale buttons on Deployments; watch Pods appear and vanish live
-- [ ] Polling first, then `watch` + WebSocket
+### ◐ M5 — The frontend
+- [x] Static HTML/JS served by FastAPI (`frontend/index.html`, mounted at `/`, last route)
+- [x] Live-updating grid of Pods with phase/status colouring; 3s poll with pause
+- [x] Scale buttons on Deployments; watch Pods appear and vanish live
+- [x] Namespace filter; error banner surfaces RBAC 403s verbatim
+- [x] Image now carries frontend + backend; build context is the repo root
+- [x] **Visualise the ownership chain** (Jovan's idea) — Deployment › ReplicaSet › Pod as a
+      nested tree, superseded ReplicaSets shown greyed at zero so rollout history is visible.
+      Needed a new `/api/replicasets` endpoint (two hops: Pod → RS → Deployment) and a new
+      `replicasets` RBAC grant.
+- [ ] **Flat/tree view toggle.** Verdict after using it: the flat grid scanned better, the tree
+      explains better. Neither wins outright — keep both and let the viewer switch. ~15 lines.
+- [ ] Click a Pod → details, events, logs (the `/api/pods/{ns}/{name}/logs` endpoint is unused)
+- [ ] Polling → `watch` + WebSocket (the `watch` RBAC verb is already granted)
 
 ### ☐ M6 — Make it production-shaped
 - [ ] Liveness / readiness / startup probes — and break each on purpose to see the effect
@@ -243,3 +251,10 @@ Newest last. One line per working session — what moved.
   Recurring lesson this session: **editing a manifest is not applying it** — twice a "fixed" file
   hadn't reached the cluster. Reflex to build: edit → dry-run → apply → verify.
   Next: M5, the frontend.
+- **2026-08-27** — **M5 mostly done.** Frontend written (Claude), image rebuilt as `0.2.0`
+  carrying both halves, rolled out. `http://localhost/` now shows live Deployments, Pods and
+  Nodes with working scale buttons — which exercise the `deployments/scale` grant end to end.
+  Tag bumped rather than rebuilt in place: same tag = identical Pod template = no new hash =
+  no rollout, and `IfNotPresent` would keep serving cached bits. Treat tags as immutable.
+  Left open: the ownership-chain visualisation (see M5), Pod detail/logs, and WebSocket.
+  Next: M6, making it production-shaped — probes, limits, HPA, NetworkPolicy.
