@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KubePlayground</title>
+<style>
+  /* Deliberately single-theme: this is an operations dashboard, and dark is the
+     idiom for the genre. No external fonts or assets — the Pod serves this with
+     no internet access and nothing should silently fail to load. */
+  :root {
+    --bg:        #0C1116;
+    --panel:     #131B22;
+    --panel-2:   #19232B;
+    --rule:      #223039;
+    --rule-soft: #1A242C;
+    --ink:       #DCE5EC;
+    --ink-soft:  #9AA9B6;
+    --muted:     #66788A;
+
+    --accent:    #4EA8C4;
+    --ok:        #4CAF7D;
+    --warn:      #D9A441;
+    --bad:       #D9634A;
+
+    --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 1.25rem 4rem; }
+
+  /* ---------- header ---------- */
+  header {
+    border-bottom: 1px solid var(--rule);
+    background: linear-gradient(180deg, var(--panel) 0%, var(--bg) 100%);
+    margin-bottom: 1.75rem;
+  }
+  .head-inner {
+    max-width: 1240px; margin: 0 auto; padding: 1.5rem 1.25rem 1.25rem;
+    display: flex; flex-wrap: wrap; gap: 1rem 2rem; align-items: baseline;
+  }
+  h1 {
+    font-size: 1.35rem; margin: 0; letter-spacing: -.02em; font-weight: 650;
+  }
+  h1 span { color: var(--accent); }
+  .facts { display: flex; flex-wrap: wrap; gap: .35rem 1.4rem; font-family: var(--mono); font-size: .76rem; color: var(--muted); }
+  .facts b { color: var(--ink-soft); font-weight: 500; }
+  .head-actions { margin-left: auto; display: flex; align-items: center; gap: .75rem; }
+
+  .badge {
+    font-family: var(--mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase;
+    padding: .22rem .5rem; border-radius: 3px; border: 1px solid var(--rule);
+    color: var(--ink-soft); background: var(--panel-2); white-space: nowrap;
+  }
+  .badge.live { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+
+  button {
+    font-family: var(--sans); font-size: .82rem; color: var(--ink);
+    background: var(--panel-2); border: 1px solid var(--rule);
+    padding: .34rem .7rem; border-radius: 4px; cursor: pointer;
+    transition: border-color .12s, background .12s;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); background: var(--panel); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  select {
+    font-family: var(--mono); font-size: .8rem; color: var(--ink);
+    background: var(--panel-2); border: 1px solid var(--rule);
+    padding: .34rem .55rem; border-radius: 4px;
+  }
+
+  /* ---------- sections ---------- */
+  section { margin-bottom: 2.25rem; }
+  .sec-head {
+    display: flex; align-items: baseline; gap: .75rem;
+    border-bottom: 1px solid var(--rule-soft); padding-bottom: .5rem; margin-bottom: 1rem;
+  }
+  h2 { font-size: .82rem; text-transform: uppercase; letter-spacing: .1em; margin: 0; color: var(--ink-soft); font-weight: 650; }
+  .count { font-family: var(--mono); font-size: .74rem; color: var(--muted); }
+
+  /* ---------- deployments ---------- */
+  .deploys { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+  .deploy {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
+    padding: .85rem 1rem; display: flex; flex-direction: column; gap: .55rem;
+  }
+  .deploy-top { display: flex; align-items: baseline; gap: .5rem; }
+  .deploy-name { font-family: var(--mono); font-size: .88rem; font-weight: 500; }
+  .deploy-ns { font-family: var(--mono); font-size: .7rem; color: var(--muted); }
+  .deploy-img { font-family: var(--mono); font-size: .72rem; color: var(--ink-soft); word-break: break-all; }
+
+  .replica-row { display: flex; align-items: center; gap: .6rem; margin-top: .15rem; }
+  .replica-count { font-family: var(--mono); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+  .replica-count .sep { color: var(--muted); }
+  .scale-btn { width: 2rem; padding: .2rem 0; text-align: center; font-family: var(--mono); font-size: .95rem; line-height: 1; }
+  .replica-label { font-size: .72rem; color: var(--muted); margin-left: auto; font-family: var(--mono); }
+
+  /* progress bar: ready vs desired, so a mid-rollout gap is visible at a glance */
+  .bar { height: 3px; background: var(--rule-soft); border-radius: 2px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--ok); transition: width .3s; }
+  .bar.partial > i { background: var(--warn); }
+
+  /* ---------- pods ---------- */
+  .pods { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); }
+  .pod {
+    background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--muted);
+    border-radius: 5px; padding: .55rem .7rem; display: flex; flex-direction: column; gap: .18rem;
+  }
+  .pod.running   { border-left-color: var(--ok); }
+  .pod.pending   { border-left-color: var(--warn); }
+  .pod.failed    { border-left-color: var(--bad); }
+  .pod.succeeded { border-left-color: var(--accent); }
+  .pod-name { font-family: var(--mono); font-size: .78rem; word-break: break-all; }
+  .pod-meta { font-family: var(--mono); font-size: .68rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: .1rem .7rem; }
+  .pod-meta .restarts { color: var(--warn); }
+  .pod-meta .notready { color: var(--bad); }
+
+  /* ---------- nodes ---------- */
+  .nodes { display: grid; gap: .6rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .node { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: .7rem .9rem; }
+  .node-name { font-family: var(--mono); font-size: .85rem; }
+  .node-meta { font-family: var(--mono); font-size: .7rem; color: var(--muted); margin-top: .2rem; }
+
+  /* ---------- misc ---------- */
+  .empty { color: var(--muted); font-family: var(--mono); font-size: .78rem; padding: 1rem 0; }
+  #error {
+    display: none; background: color-mix(in srgb, var(--bad) 14%, var(--panel));
+    border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent);
+    border-radius: 5px; padding: .7rem .9rem; margin-bottom: 1.25rem;
+    font-family: var(--mono); font-size: .78rem; color: var(--ink);
+  }
+  #error.show { display: block; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-inner">
+    <h1>Kube<span>Playground</span></h1>
+    <div class="facts" id="facts"><span>connecting…</span></div>
+    <div class="head-actions">
+      <span class="badge" id="mode">—</span>
+      <span class="badge live" id="tick">live</span>
+      <button id="pause">Pause</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="error"></div>
+
+  <section>
+    <div class="sec-head">
+      <h2>Deployments</h2>
+      <span class="count" id="deploy-count"></span>
+      <div style="margin-left:auto">
+        <select id="ns"><option value="">all namespaces</option></select>
+      </div>
+    </div>
+    <div class="deploys" id="deploys"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>Pods</h2>
+      <span class="count" id="pod-count"></span>
+    </div>
+    <div class="pods" id="pods"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>Nodes</h2>
+      <span class="count" id="node-count"></span>
+    </div>
+    <div class="nodes" id="nodes"></div>
+  </section>
+</div>
+
+<script>
+'use strict';
+
+const REFRESH_MS = 3000;
+let paused = false;
+let namespace = '';
+let inFlight = false;
+
+const $ = (id) => document.getElementById(id);
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch (_) {}
+    // 403 here means the ServiceAccount's ClusterRole is missing a verb —
+    // surface it verbatim rather than showing an empty list.
+    throw new Error(`${res.status} ${path} — ${detail}`);
+  }
+  return res.json();
+}
+
+function showError(msg) {
+  const el = $('error');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function clearError() { $('error').classList.remove('show'); }
+
+function age(sec) {
+  if (sec == null) return '—';
+  if (sec < 60) return Math.floor(sec) + 's';
+  if (sec < 3600) return Math.floor(sec / 60) + 'm';
+  if (sec < 86400) return Math.floor(sec / 3600) + 'h';
+  return Math.floor(sec / 86400) + 'd';
+}
+
+const qs = () => (namespace ? `?namespace=${encodeURIComponent(namespace)}` : '');
+
+function renderFacts(info) {
+  $('facts').innerHTML =
+    `<span>kubernetes <b>${info.gitVersion}</b></span>` +
+    `<span>nodes <b>${info.nodeCount}</b></span>` +
+    `<span>${info.platform}</span>`;
+  $('mode').textContent = info.mode.startsWith('in-cluster') ? 'in-cluster' : 'kubeconfig';
+}
+
+function renderNamespaces(list) {
+  const sel = $('ns');
+  const wanted = list.map(n => n.name).sort();
+  const current = Array.from(sel.options).slice(1).map(o => o.value);
+  if (JSON.stringify(wanted) === JSON.stringify(current)) return;  // don't clobber focus
+  sel.innerHTML = '<option value="">all namespaces</option>' +
+    wanted.map(n => `<option value="${n}">${n}</option>`).join('');
+  sel.value = namespace;
+}
+
+function renderDeployments(list) {
+  $('deploy-count').textContent = list.length ? `${list.length} total` : '';
+  const el = $('deploys');
+  if (!list.length) { el.innerHTML = '<div class="empty">no deployments</div>'; return; }
+
+  el.innerHTML = list.map(d => {
+    const pct = d.desired ? Math.round((d.ready / d.desired) * 100) : 0;
+    const partial = d.ready !== d.desired ? ' partial' : '';
+    return `
+      <div class="deploy">
+        <div class="deploy-top">
+          <span class="deploy-name">${d.name}</span>
+          <span class="deploy-ns">${d.namespace}</span>
+        </div>
+        <div class="deploy-img">${d.images.join(', ')}</div>
+        <div class="bar${partial}"><i style="width:${pct}%"></i></div>
+        <div class="replica-row">
+          <button class="scale-btn" data-ns="${d.namespace}" data-name="${d.name}"
+                  data-to="${Math.max(0, d.desired - 1)}"
+                  ${d.desired <= 0 ? 'disabled' : ''} title="scale down">&minus;</button>
+          <span class="replica-count">${d.ready}<span class="sep">/</span>${d.desired}</span>
+          <button class="scale-btn" data-ns="${d.namespace}" data-name="${d.name}"
+                  data-to="${d.desired + 1}"
+                  ${d.desired >= 20 ? 'disabled' : ''} title="scale up">+</button>
+          <span class="replica-label">ready / desired · ${age(d.ageSeconds)}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderPods(list) {
+  $('pod-count').textContent = list.length ? `${list.length} total` : '';
+  const el = $('pods');
+  if (!list.length) { el.innerHTML = '<div class="empty">no pods</div>'; return; }
+
+  el.innerHTML = list.map(p => {
+    const [r, t] = p.ready.split('/').map(Number);
+    const notReady = t > 0 && r < t;
+    return `
+      <div class="pod ${(p.phase || '').toLowerCase()}">
+        <div class="pod-name">${p.name}</div>
+        <div class="pod-meta">
+          <span>${p.namespace}</span>
+          <span class="${notReady ? 'notready' : ''}">${p.phase} ${p.ready}</span>
+          ${p.restarts ? `<span class="restarts">↺ ${p.restarts}</span>` : ''}
+          <span>${p.podIP || '—'}</span>
+          <span>${age(p.ageSeconds)}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderNodes(list) {
+  $('node-count').textContent = list.length ? `${list.length} total` : '';
+  $('nodes').innerHTML = list.map(n => `
+    <div class="node">
+      <div class="node-name">${n.name}</div>
+      <div class="node-meta">
+        ${n.ready === 'True' ? 'Ready' : 'NotReady'} ·
+        ${n.roles.join(',') || 'worker'} · ${n.kubeletVersion}<br>
+        ${n.capacity.cpu} cpu · ${n.capacity.memory} · max ${n.capacity.pods} pods · up ${age(n.ageSeconds)}
+      </div>
+    </div>`).join('');
+}
+
+async function refresh() {
+  if (inFlight) return;
+  inFlight = true;
+  try {
+    const [info, namespaces, deploys, pods, nodes] = await Promise.all([
+      api('/api/cluster'),
+      api('/api/namespaces'),
+      api('/api/deployments' + qs()),
+      api('/api/pods' + qs()),
+      api('/api/nodes'),
+    ]);
+    renderFacts(info);
+    renderNamespaces(namespaces);
+    renderDeployments(deploys);
+    renderPods(pods);
+    renderNodes(nodes);
+    clearError();
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    inFlight = false;
+  }
+}
+
+// Scale buttons are bound by delegation, so re-rendering the list doesn't
+// orphan handlers.
+$('deploys').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('.scale-btn');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    await api(`/api/deployments/${btn.dataset.ns}/${btn.dataset.name}/scale`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ replicas: Number(btn.dataset.to) }),
+    });
+    await refresh();   // show the new desired count immediately
+  } catch (err) {
+    showError(err.message);
+    btn.disabled = false;
+  }
+});
+
+$('ns').addEventListener('change', (ev) => { namespace = ev.target.value; refresh(); });
+
+$('pause').addEventListener('click', () => {
+  paused = !paused;
+  $('pause').textContent = paused ? 'Resume' : 'Pause';
+  $('tick').textContent = paused ? 'paused' : 'live';
+  $('tick').classList.toggle('live', !paused);
+  if (!paused) refresh();
+});
+
+refresh();
+setInterval(() => { if (!paused) refresh(); }, REFRESH_MS);
+</script>
+</body>
+</html>

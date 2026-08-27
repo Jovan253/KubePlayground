@@ -130,18 +130,31 @@ Every mutating command (`apply`, `delete`, `scale`, `edit`) gets an explicit
 - [ ] **Jovan to review `backend/main.py`** — particularly `load_config()`
 - [ ] Understand `load_kube_config()` vs `load_incluster_config()` — the seam that matters in M3
 
-### ☐ M3 — Containerise and run it *in* the cluster
-- [ ] Dockerfile (non-root user, slim base, no secrets baked in)
-- [ ] Get the image into k3s (Rancher Desktop shares the docker daemon — no registry needed)
-- [ ] **ServiceAccount** `kubeplayground-sa`
-- [ ] **ClusterRole** + **ClusterRoleBinding** — least privilege, exactly the verbs needed
-- [ ] **Deployment** for the API, using `load_incluster_config()`
-- [ ] Prove RBAC works by *removing* a verb and watching it 403
+### ☑ M3 — Containerise and run it *in* the cluster
+- [x] Dockerfile (non-root uid 10001, slim pinned base, deps layered before source)
+- [x] Get the image into k3s (Rancher Desktop shares the docker daemon — no registry needed;
+      requires `imagePullPolicy: IfNotPresent` since there's no registry to pull from)
+- [x] **ServiceAccount** `kubeplayground-sa` (`k8s/10-serviceaccount.yaml`)
+- [x] **Deployment** for the API, using `load_incluster_config()` (`k8s/12-api-deployment.yaml`)
+- [x] Saw the baseline: a fresh SA can do *nothing* — Pod `1/1 Running` but every call 403s
+- [x] **ClusterRole** + **ClusterRoleBinding** — least privilege (`k8s/11-rbac.yaml`)
+- [x] Subresources are separate RBAC targets: `pods/log`, `deployments/scale`
+- [x] `kubectl auth can-i --list --as=system:serviceaccount:<ns>:<name>`
+- [x] **RBAC is additive — there are no deny rules.** Effective permissions are the union of
+      every binding naming a subject; an absent rule protects nothing.
+- [x] Prove RBAC works by *removing* a verb and watching it 403
+- [x] Cross-namespace: ConfigMaps/Secrets/Ingress backends can only be referenced from the
+      referencing object's own namespace — no cross-namespace references
 
-### ☐ M4 — Expose it
-- [ ] **Service** (ClusterIP) in front of the Deployment
-- [ ] **Ingress** via Traefik; reach it from the Windows browser
-- [ ] Understand the path: browser → Ingress → Service → Endpoints → Pod
+### ☑ M4 — Expose it
+- [x] **Service** (ClusterIP) in front of the Deployment (`k8s/13-api-service.yaml`) —
+      `port: 80` → `targetPort: 8000`, the first time the two differ
+- [x] **Ingress** via Traefik (`k8s/14-ingress.yaml`); reachable at `http://localhost/`
+- [x] Understand the path: browser → Traefik → Ingress rule → Service → EndpointSlice → Pod
+- [x] Ingress **resource** (rules in etcd) vs Ingress **controller** (the workload that acts
+      on them). Rules with no controller silently route nothing.
+- [x] Ingress YAML nesting: `rules`/`paths` are lists, `http`/`backend`/`service`/`port` are maps
+- [x] `pathType` is required — `Prefix` / `Exact` / `ImplementationSpecific`
 
 ### ☐ M5 — The frontend
 - [ ] Static HTML/JS served by FastAPI
@@ -219,3 +232,14 @@ Newest last. One line per working session — what moved.
   cluster-scoped object with `metadata.namespace`, and an `env` entry with no `valueFrom`, both
   applied cleanly and did nothing. Diff submitted-vs-stored when something "works" but doesn't.
   Next: M2, the FastAPI backend.
+- **2026-08-27** — **M2 written, M3 and M4 complete.** FastAPI backend (`backend/main.py`,
+  Claude-written, reviewed by Jovan), containerised non-root, and now running *inside* the
+  cluster as a Pod: `/api/health` reports `"mode":"in-cluster"`, meaning it authenticated with
+  a ServiceAccount token rather than a kubeconfig. RBAC written to least privilege — six grants,
+  no `secrets`, no `create`/`delete`, and `deployments/scale` granted separately from
+  `deployments` so the scale button works without the app being able to redeploy anything.
+  Verified by deliberately deleting the scale rule and watching a 403.
+  Reachable end-to-end at `http://localhost/api/...` via Traefik.
+  Recurring lesson this session: **editing a manifest is not applying it** — twice a "fixed" file
+  hadn't reached the cluster. Reflex to build: edit → dry-run → apply → verify.
+  Next: M5, the frontend.

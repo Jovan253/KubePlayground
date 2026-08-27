@@ -1,0 +1,80 @@
+# RBAC for the KubePlayground API.
+#
+# Two objects: a ClusterRole (a list of permissions, which grants nothing on its
+# own) and a ClusterRoleBinding (which attaches that list to an identity).
+#
+# ClusterRole rather than Role because the app lists Pods across ALL namespaces,
+# and because Nodes and Namespaces are cluster-scoped — a namespaced Role cannot
+# reach them at any level of privilege.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  # No namespace: ClusterRoles are cluster-scoped objects.
+  name: kubeplayground-reader
+  labels:
+    app.kubernetes.io/part-of: kubeplayground
+# `rules` replaces `spec` on RBAC objects. Each entry is a grant:
+# "these verbs, on these resources, in this API group".
+rules:
+  # "" is the CORE API group. Not "core", not "v1" — the empty string.
+  # These are the objects backing /api/pods, /api/services, /api/namespaces,
+  # /api/nodes.
+  - apiGroups: [""]
+    resources: ["pods", "services", "namespaces", "nodes"]
+    # `watch` is unused today; M5's live updates need it, and adding it now
+    # avoids a second RBAC round-trip later.
+    verbs: ["get", "list", "watch"]
+
+  # Subresources are SEPARATE permission targets. `get` on "pods" above does
+  # NOT grant log access — this rule is what makes /api/pods/{ns}/{name}/logs
+  # work.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+  # Deployments live in the "apps" group, not core.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+
+  # The scale button. `patch` on deployments/scale lets the app change the
+  # replica count and NOTHING else — it cannot change the image, the selector,
+  # the probes, or anything else about a Deployment, because `patch` on
+  # "deployments" itself is deliberately not granted above.
+  #
+  # This is the sharpest example of least privilege you'll meet: one capability,
+  # granted precisely, without the blast radius that "edit Deployments" implies.
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["patch"]
+
+  # Deliberately NOT granted:
+  #   secrets       — an app that can read Secrets cluster-wide is a real hole
+  #   create/delete — this app observes and scales; it does not deploy
+  #   */exec        — shell access into any Pod in the cluster
+  # RBAC is additive with no deny rules, so least privilege means granting
+  # less. There is no way to subtract a permission later.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubeplayground-reader-binding
+  labels:
+    app.kubernetes.io/part-of: kubeplayground
+# WHICH permissions to grant. roleRef is IMMUTABLE — pointing this binding at a
+# different role means deleting and recreating the binding.
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubeplayground-reader
+# WHO gets them. `namespace` is required even though this binding is
+# cluster-scoped, because ServiceAccounts are namespaced objects and the name
+# alone is ambiguous — there could be a kubeplayground-sa in every namespace.
+#
+# To the authorizer this subject appears as the username:
+#   system:serviceaccount:kubeplayground:kubeplayground-sa
+subjects:
+  - kind: ServiceAccount
+    name: kubeplayground-sa
+    namespace: kubeplayground

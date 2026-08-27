@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeplayground-api
+  namespace: kubeplayground
+  labels:
+    app: kubeplayground-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubeplayground-api
+  template:
+    metadata:
+      labels:
+        app: kubeplayground-api
+    spec:
+      serviceAccountName: kubeplayground-sa
+      containers:
+        - name: api
+          image: kubeplayground-api:0.2.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000

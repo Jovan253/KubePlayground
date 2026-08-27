@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeplayground-api
+  namespace: kubeplayground
+  labels:
+    app: kubeplayground-api
+spec:
+  type: ClusterIP
+  selector:
+    app: kubeplayground-api
+  ports:
+    - port: 80
+      targetPort: 8000
+      protocol: TCP

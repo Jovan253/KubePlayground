@@ -19,8 +19,11 @@ import logging
 import os
 from typing import Any
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from pydantic import BaseModel, Field
@@ -309,3 +312,21 @@ def scale_deployment(namespace: str, name: str, body: ScaleRequest) -> dict:
         "name": name,
         "replicas": scale.spec.replicas,
     }
+
+
+# --------------------------------------------------------------------------
+# Static frontend.
+#
+# Mounted LAST, on purpose. Routes are matched in registration order, and this
+# mount claims "/" — anything registered after it would be shadowed and never
+# reached. In the image the frontend lands at /app/static; running from source
+# it's ../frontend, so both work without a config flag.
+# --------------------------------------------------------------------------
+_here = Path(__file__).parent
+for candidate in (_here / "static", _here.parent / "frontend"):
+    if candidate.is_dir():
+        app.mount("/", StaticFiles(directory=candidate, html=True), name="frontend")
+        log.info("serving frontend from %s", candidate)
+        break
+else:
+    log.warning("no frontend directory found — API only")
