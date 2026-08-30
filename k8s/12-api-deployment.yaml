@@ -18,7 +18,7 @@ spec:
       serviceAccountName: kubeplayground-sa
       containers:
         - name: api
-          image: kubeplayground-api:0.4.0
+          image: kubeplayground-api:0.6.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000

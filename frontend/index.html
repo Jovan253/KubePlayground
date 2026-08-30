@@ -262,6 +262,14 @@
     background: var(--panel); border-radius: 0 4px 4px 0; font-size: .72rem; color: var(--ink-soft);
   }
   .stripped b { color: var(--warn); font-weight: 500; }
+
+  .defaults {
+    margin-top: .6rem; border-left: 2px solid var(--accent); padding: .5rem .7rem;
+    background: var(--panel); border-radius: 0 4px 4px 0; font-size: .72rem;
+    color: var(--ink-soft); line-height: 1.6;
+  }
+  .defaults b { color: var(--accent); font-weight: 500; }
+  .defaults code { font-family: var(--mono); font-size: .68rem; color: var(--ink); }
   .stripped ul { margin: .35rem 0 0; padding-left: 1.1rem; font-family: var(--mono); font-size: .68rem; }
 
   /* ---------- kubectl transcript ----------
@@ -388,14 +396,23 @@
     <div class="pane" data-pane="yaml" hidden>
       <div class="yaml-bar">
         <div class="toggle" id="y-toggle">
-          <button data-mode="clean" class="on">as written</button>
-          <button data-mode="full">as stored</button>
+          <button data-mode="clean" class="on">spec</button>
+          <button data-mode="full">spec + status</button>
         </div>
         <button id="y-copy">Copy</button>
         <span class="event-meta" id="y-cmd"></span>
       </div>
       <pre class="yaml" id="d-yaml">loading…</pre>
       <div class="stripped" id="y-stripped" hidden></div>
+      <div class="defaults" id="y-defaults" hidden>
+        <b>This is still the server's answer, not your file.</b>
+        Fields you never wrote are in here — <code>progressDeadlineSeconds</code>,
+        <code>terminationGracePeriodSeconds</code>, <code>dnsPolicy</code>,
+        <code>imagePullPolicy</code>, <code>revisionHistoryLimit</code>,
+        <code>maxSurge</code> — all filled in by <b>admission-time defaulting</b> when you applied.
+        Diff this against the file in <code>k8s/</code> and the difference is what the API server
+        decided on your behalf.
+      </div>
     </div>
   </div>
 </aside>
@@ -810,6 +827,8 @@ function renderYaml() {
 
   // The stripped list only makes sense against the cleaned view — it explains
   // what is MISSING from it, and why you never wrote those fields yourself.
+  $('y-defaults').hidden = yamlMode !== 'clean';
+
   const box = $('y-stripped');
   if (yamlMode === 'clean' && yamlDoc.stripped.length) {
     box.hidden = false;

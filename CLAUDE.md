@@ -94,10 +94,16 @@ Docker Desktop specifics that affect manifests — these differ from k3s and bit
   nginx's default backend, which is a *healthy* answer, not a failure.
 - StorageClasses are `standard` (**the default**) and `hostpath`. Both use the
   `rancher.io/local-path` provisioner — the same one k3s used.
-- **Images:** unverified whether a locally-built tag is visible to the cluster. The old Docker
-  Desktop shared one dockerd with Kubernetes, which is what made `imagePullPolicy: IfNotPresent`
-  work with no registry (see M3). The kind-based cluster has its own containerd, with a registry
-  mirror bridging the two. TEST THIS before assuming M3's note still holds.
+- **Images: a locally-built tag IS usable, but by a different mechanism than M3 describes.**
+  Verified 2026-08-30 with a throwaway Pod. Rancher Desktop shared one daemon between builds and
+  the cluster; here the kubelet reports `Pulling image` and `Successfully pulled ... in 14.4s`
+  even under `imagePullPolicy: IfNotPresent` — it pulls over the registry protocol from
+  `desktop-containerd-registry-mirror`, which fronts your local Docker image store.
+
+  **Consequence: treat tags as immutable, harder than before.** The node now CACHES what it pulls.
+  Rebuild the same tag and `IfNotPresent` will not re-pull it — the Pod serves stale layers with
+  no error anywhere. Bump the tag on every build. No registry is needed until EKS, which is M9's
+  Step 2 and exactly this problem once the node stops being your laptop.
 
 ## ⚠️ Context safety rule
 
