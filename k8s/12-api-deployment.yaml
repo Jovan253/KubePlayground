@@ -22,3 +22,28 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
+              name: http
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "80Mi"
+              cpu: "250m"
+            limits:
+              memory: "160Mi"
+              cpu: "500m"
