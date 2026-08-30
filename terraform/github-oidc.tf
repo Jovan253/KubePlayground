@@ -1,24 +1,19 @@
-# Step 1 — Identity. GitHub Actions authenticates to AWS with no stored secret.
-#
-# Actions mints a short-lived JWT describing the run (repo, branch, workflow),
-# signed by GitHub. STS verifies it against the trust policy below and returns
-# temporary credentials. Nothing is stored; nothing needs rotating.
+# Provided an IAM role has been created with Admin Access we do the following
 
-# Registers GitHub as a trusted issuer. One per URL per account — if this errors
-# with EntityAlreadyExists, import it instead of recreating:
-#   terraform import aws_iam_openid_connect_provider.github \
-#     arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com
+# The identity provider: "AWS, trust tokens signed by GitHub Actions."
 resource "aws_iam_openid_connect_provider" "github" {
-  url            = "https://token.actions.githubusercontent.com"
+  url = "https://token.actions.githubusercontent.com"
+  
   client_id_list = ["sts.amazonaws.com"]
-
-  # No thumbprint_list: AWS validates well-known IdPs against its own CA store.
-  # If your provider version still requires it, use a tls_certificate data
-  # source rather than pasting a hardcoded SHA-1.
 }
 
-# Builds the trust policy JSON. No API call — aws_iam_policy_document is a
-# document generator despite being a `data` source.
+# ---------------------------------------------------------------------------
+# The trust policy — WHO may assume the role.
+#
+# This document is the security boundary of the entire pipeline. Everything else
+# in this repo is recoverable; getting this wrong hands your AWS account to
+# strangers.
+# ---------------------------------------------------------------------------
 data "aws_iam_policy_document" "github_assume_role" {
   statement {
     sid     = "GitHubActionsOIDC"
@@ -30,19 +25,29 @@ data "aws_iam_policy_document" "github_assume_role" {
       identifiers = [aws_iam_openid_connect_provider.github.arn]
     }
 
+    # Assert the audience. Without this, a token GitHub minted for a different
+    # audience could potentially be presented here.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:aud"
       values   = ["sts.amazonaws.com"]
     }
 
-    # The security boundary of the whole pipeline. `sub` identifies which
-    # workflow run is asking:
-    #     repo:<owner>/<name>:ref:refs/heads/<branch>
+    # ---- THE IMPORTANT ONE ----
     #
-    # StringEquals with no wildcard. Omit this condition or loosen it to
-    # something like `repo:*` and ANY GitHub repo on the internet can assume
-    # this role. That mistake has emptied real AWS accounts.
+    # `sub` identifies which workflow run is asking. Its shape is:
+    #
+    #     repo:<owner>/<name>:ref:refs/heads/<branch>
+    #     repo:<owner>/<name>:pull_request
+    #     repo:<owner>/<name>:environment:<name>
+    #
+    # StringEquals, not StringLike, and no wildcard anywhere. Omitting this
+    # condition, or loosening it to something like `repo:*`, means ANY GitHub
+    # repository on the internet — a stranger's account, a fork of yours — can
+    # assume this role. That mistake has emptied real AWS accounts.
+    #
+    # Same instinct as the Kubernetes RBAC in k8s/11-rbac.yaml: name the exact
+    # principal, never wildcard the thing that identifies the caller.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
@@ -51,12 +56,23 @@ data "aws_iam_policy_document" "github_assume_role" {
   }
 }
 
-# No permissions attached yet — step 1 only proves the auth path works. Later
-# steps add exactly what they need, which is easier to review than trimming back
-# from broad.
+# ---------------------------------------------------------------------------
+# The role itself.
+#
+# Deliberately has NO permissions attached yet. Step 1's only job is to prove the
+# authentication path works; a workflow that assumes this role can call
+# sts:GetCallerIdentity (always permitted) and nothing else.
+#
+# Starting empty means the first pipeline run has zero blast radius, and each
+# later step adds exactly the permissions that step needs — which is far easier
+# to review than starting broad and trying to trim back.
+# ---------------------------------------------------------------------------
 resource "aws_iam_role" "github_actions" {
-  name                 = "${var.project}-github-actions"
-  description          = "Assumed by GitHub Actions in ${var.github_repo} via OIDC."
-  assume_role_policy   = data.aws_iam_policy_document.github_assume_role.json
+  name               = "${var.project}-github-actions"
+  description        = "Assumed by GitHub Actions in ${var.github_repo} via OIDC. No stored credentials."
+  assume_role_policy = data.aws_iam_policy_document.github_assume_role.json
+
+  # An hour is plenty for a build-and-deploy run, and caps how long a leaked
+  # session token remains useful.
   max_session_duration = 3600
 }
