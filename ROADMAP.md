@@ -211,9 +211,52 @@ publicly on EKS.*
       `kubeplayground-api`.
 - [ ] Verify end to end against a live cluster — **not done yet, there is no cluster** (see above)
 
-### ☐ M6 — Make it production-shaped
-- [ ] Liveness / readiness / startup probes — and break each on purpose to see the effect
-- [ ] Resource requests & limits; trigger an OOMKill and a CPU throttle deliberately
+### ◐ M6 — Make it production-shaped
+- [x] **Liveness / readiness / startup probes** on `kubeplayground-api`, all three `httpGet` at
+      `/api/health` on the named port `http`. Mistakes made and understood along the way, each of
+      which applied cleanly and broke something else:
+      - `exec` takes a COMMAND, not a URL path. `/api/health` is not a file on disk.
+      - a probe talks straight to the Pod IP — it never goes through the Service, so the port is
+        `containerPort` (8000), never the Service's `port` (80).
+      - `containerPort` **binds nothing**; it is documentation. Setting it to 80 did not move the
+        listener, but it did repoint the named port `http`, so every probe hit a closed port and
+        the container CrashLoopBackOff'd while the app itself was fine.
+      - with a `startupProbe` present, liveness and readiness do not run until it succeeds, which
+        makes `initialDelaySeconds` on them redundant. That is the whole reason startup probes
+        exist: a generous boot budget AND fast failure detection afterwards, instead of trading
+        one for the other via a large `initialDelaySeconds`.
+- [x] **Resource requests & limits — set from measurement, not guesswork.** Read out of the
+      container's own cgroup (`/sys/fs/cgroup/memory.current`, `cpu.stat`) rather than estimated:
+
+      | | idle | under load (~3 req/s) |
+      |---|---|---|
+      | CPU | 6m | **142m** |
+      | memory | 81 MiB | 86–90 MiB peak |
+
+      QoS class is `Burstable` — `Guaranteed` needs requests == limits for **both** cpu and memory
+      on **every** container; matching only CPU buys nothing.
+
+      **The finding worth keeping.** At a `500m` CPU limit while averaging **142m — 28% of the
+      allowance — the container was still throttled in 11 of 147 scheduling windows (7.5%)**,
+      losing 0.26s to forced idling in 16 seconds.
+
+      Why: CFS quota is enforced per **100ms period**, not as an average. `500m` means 50ms of CPU
+      per 100ms window. This app is bursty — a request lands, serialises a few hundred objects in
+      one tight burst, then idles — and a burst that wants more than 50ms inside one window is
+      stopped dead until the next.
+
+      This is the classic production misdiagnosis: p99 latency spikes with no CPU pressure visible
+      anywhere, because dashboards average over 30–60s and the damage happens in 100ms slices.
+      `nr_throttled` is the only place it shows.
+
+      **The asymmetry to remember: CPU limits degrade you silently, memory limits kill you
+      loudly.** Hence the defensible position — set a CPU *request* and consider omitting the CPU
+      *limit* entirely for latency-sensitive services, while memory limits stay mandatory because
+      the failure mode there is an OOMKill, not a stall.
+- [ ] Break each probe on purpose — readiness (drops out of the EndpointSlice, Pod keeps running)
+      vs liveness (container is killed and restarted). Break them SEPARATELY; they are currently
+      identical, so they would otherwise always fail together.
+- [ ] Trigger an OOMKill deliberately and see exit code 137
 - [ ] ConfigMap + Secret for app config
 - [ ] **HorizontalPodAutoscaler** on a sample workload
 - [ ] **NetworkPolicy** restricting who can reach the API

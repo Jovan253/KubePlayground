@@ -153,6 +153,27 @@
   .pod.failed    { border-left-color: var(--bad); }
   .pod.succeeded { border-left-color: var(--accent); }
   .pod-name { font-family: var(--mono); font-size: .71rem; word-break: break-all; }
+
+  /* ---------- "you are here" ----------
+     The app is running inside the cluster it is drawing. Without marking it,
+     that — the entire premise of the project — is invisible in its own output. */
+  .pod.self {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  }
+  .owner.self { border-color: color-mix(in srgb, var(--accent) 55%, var(--rule)); }
+  .self-tag {
+    font-family: var(--mono); font-size: .58rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--bg); background: var(--accent); padding: .08rem .3rem; border-radius: 2px;
+    white-space: nowrap;
+  }
+  .self-note {
+    font-size: .72rem; color: var(--ink-soft); margin: -.4rem 0 1rem;
+    border-left: 2px solid var(--accent); padding: .4rem .7rem;
+    background: var(--panel); border-radius: 0 4px 4px 0;
+  }
+  .self-note b { color: var(--accent); font-weight: 500; }
+  .self-note code { font-family: var(--mono); font-size: .68rem; color: var(--ink); }
   .pod-meta { font-family: var(--mono); font-size: .64rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: .1rem .55rem; }
   .pod-meta .restarts { color: var(--warn); }
   .pod-meta .notready { color: var(--bad); }
@@ -347,6 +368,7 @@
         <select id="ns"><option value="">all namespaces</option></select>
       </div>
     </div>
+    <div class="self-note" id="self-note" hidden></div>
     <div class="tree" id="tree"></div>
   </section>
 
@@ -485,6 +507,19 @@ function renderFacts(info) {
     `<span>nodes <b>${info.nodeCount}</b></span>` +
     `<span>${esc(info.platform)}</span>`;
   $('mode').textContent = info.mode.startsWith('in-cluster') ? 'in-cluster' : 'kubeconfig';
+
+  selfInfo = info.self || {};
+  const note = $('self-note');
+  if (selfInfo.podName) {
+    note.hidden = false;
+    note.innerHTML =
+      '<b>You are here.</b> The highlighted Pod below is this app — it is running ' +
+      'inside the cluster it is showing you, on node <code>' + esc(selfInfo.nodeName || '?') +
+      '</code>. It learned its own name from the <b>downward API</b>, not from the ' +
+      'Kubernetes API: the kubelet injected it as an environment variable, so this costs no RBAC.';
+  } else {
+    note.hidden = true;
+  }
 }
 
 function renderNamespaces(list) {
@@ -497,13 +532,17 @@ function renderNamespaces(list) {
   sel.value = namespace;
 }
 
+const isSelfPod = (p) =>
+  !!selfInfo.podName && p.name === selfInfo.podName && p.namespace === selfInfo.podNamespace;
+
 function podChip(p) {
   const [r, t] = p.ready.split('/').map(Number);
   const notReady = t > 0 && r < t;
+  const self = isSelfPod(p);
   return `
-    <div class="pod ${esc((p.phase || '').toLowerCase())}" role="button" tabindex="0"
+    <div class="pod ${esc((p.phase || '').toLowerCase())}${self ? ' self' : ''}" role="button" tabindex="0"
          data-kind="Pod" data-ns="${esc(p.namespace)}" data-name="${esc(p.name)}">
-      <div class="pod-name">${esc(p.name)}</div>
+      <div class="pod-name">${self ? '<span class="self-tag">you are here</span> ' : ''}${esc(p.name)}</div>
       <div class="pod-meta">
         <span class="${notReady ? 'notready' : ''}">${esc(p.phase)} ${esc(p.ready)}</span>
         ${p.restarts ? `<span class="restarts">↺ ${p.restarts}</span>` : ''}
@@ -513,7 +552,7 @@ function podChip(p) {
     </div>`;
 }
 
-function deploymentCard(d, replicaSets, podsByOwner) {
+function deploymentCard(d, replicaSets, podsByOwner, isSelf) {
   const pct = d.desired ? Math.round((d.ready / d.desired) * 100) : 0;
   const partial = d.ready !== d.desired ? ' partial' : '';
 
@@ -543,13 +582,14 @@ function deploymentCard(d, replicaSets, podsByOwner) {
   }).join('') : '<span class="no-pods">no replicasets</span>';
 
   return `
-    <div class="owner">
+    <div class="owner${isSelf ? ' self' : ''}">
       <div class="owner-head">
         <div class="owner-title" role="button" tabindex="0"
              data-kind="Deployment" data-ns="${esc(d.namespace)}" data-name="${esc(d.name)}">
           <span class="kind-tag">Deployment</span>
           <span class="owner-name">${esc(d.name)}</span>
           <span class="owner-ns">${esc(d.namespace)}</span>
+          ${isSelf ? '<span class="self-tag">this app</span>' : ''}
         </div>
         <div class="owner-img">${esc(d.images.join(', '))}</div>
         <div class="bar${partial}"><i style="width:${pct}%"></i></div>
@@ -607,11 +647,27 @@ function renderTree(deploys, replicasets, pods) {
     claimedRS.add(key(rs.namespace, 'ReplicaSet', rs.name));
   }
 
+  // Which Deployment are WE running under? The same two hops the tree already
+  // makes: our Pod names its ReplicaSet, that ReplicaSet names its Deployment.
+  let selfDeployKey = null;
+  const selfPod = pods.find(isSelfPod);
+  if (selfPod && selfPod.ownedBy[0]) {
+    const rsKey = key(selfPod.namespace, 'ReplicaSet', selfPod.ownedBy[0].name);
+    for (const rs of replicasets) {
+      if (key(rs.namespace, 'ReplicaSet', rs.name) !== rsKey) continue;
+      const owner = rs.ownedBy[0];
+      if (owner && owner.kind === 'Deployment') {
+        selfDeployKey = key(rs.namespace, 'Deployment', owner.name);
+      }
+    }
+  }
+
   const blocks = [];
 
   for (const d of deploys) {
-    const sets = rsByDeployment.get(key(d.namespace, 'Deployment', d.name)) || [];
-    blocks.push(deploymentCard(d, sets, podsByOwner));
+    const dKey = key(d.namespace, 'Deployment', d.name);
+    const sets = rsByDeployment.get(dKey) || [];
+    blocks.push(deploymentCard(d, sets, podsByOwner, dKey === selfDeployKey));
   }
 
   // Pods owned by something that isn't a Deployment-managed ReplicaSet:
@@ -744,6 +800,7 @@ const TABS_FOR = {
   Namespace:  ['yaml'],
 };
 
+let selfInfo = {};       // downward-API facts about our own Pod, from /api/cluster
 let openObj = null;      // {kind, ns, name} while the drawer is showing
 let yamlMode = 'clean';  // 'clean' = as written · 'full' = as stored
 let yamlDoc = null;      // last /api/manifest payload

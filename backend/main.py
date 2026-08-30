@@ -80,6 +80,31 @@ def load_config() -> str:
 
 MODE = load_config()
 
+# --------------------------------------------------------------------------
+# Who am I?
+#
+# A container cannot work out its own Pod's name. The image is byte-identical
+# across every replica, and the name is assigned by the API server at creation
+# time — so there is nothing inside the container that distinguishes it.
+#
+# The DOWNWARD API is how a Pod is told facts about itself: the kubelet reads
+# them off the Pod object and injects them, as env vars (here) or as files in a
+# volume. Note the direction — this is the cluster describing the Pod to
+# itself, not the app querying the API. It needs no RBAC at all.
+#
+# This is what lets the UI mark its own Pod. The app runs inside the cluster it
+# is drawing, which is the entire point of the project, and without this it is
+# invisible in its own output.
+#
+# All three are None when the manifest doesn't set them — running from a laptop,
+# for instance — and the UI just omits the highlight.
+# --------------------------------------------------------------------------
+SELF = {
+    "podName": os.getenv("POD_NAME"),
+    "podNamespace": os.getenv("POD_NAMESPACE"),
+    "nodeName": os.getenv("NODE_NAME"),
+}
+
 core_v1 = client.CoreV1Api()
 apps_v1 = client.AppsV1Api()
 version_api = client.VersionApi()
@@ -154,6 +179,8 @@ def cluster_info() -> dict:
         "gitVersion": v.git_version,
         "platform": v.platform,
         "nodeCount": len(nodes.items),
+        # Populated by the downward API — see SELF above.
+        "self": SELF,
     }
 
 
