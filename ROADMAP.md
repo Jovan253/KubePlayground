@@ -306,6 +306,37 @@ each step below lands separately with an explanation of what it creates and why 
 
 ---
 
+### ☐ M10 — A safe workload catalogue (the "playground" half)
+*Added 2026-08-30. Answers "can the site create Deployments once it's on AWS?" — yes, but never
+as a raw `create Deployment` endpoint.*
+
+**Why not the obvious version.** `create` on deployments means the caller chooses the image, and
+choosing the image is **arbitrary code execution in the cluster** — the same reasoning that made
+`patch deployments` unacceptable in M3. Publicly reachable endpoints that accept workloads get
+found by scanners quickly, and the usual payload is a crypto miner. On EKS that is a real bill,
+and a pod that can reach IMDS may be able to borrow the node's instance credentials.
+
+**The design instead:** the client sends a *choice*, never a spec. The server builds the manifest
+from a fixed template.
+
+- [ ] A **catalogue** of predefined workloads, rendered server-side: plain nginx, a sleeper, and
+      the deliberately broken ones — bad image tag (`ImagePullBackOff`), oversized resource
+      request (`Pending`/unschedulable), a tight memory limit (`OOMKilled`), a broken selector
+      (empty EndpointSlice). These double as the "break it and diagnose it" scenarios.
+- [ ] A namespaced **Role** granting `create`/`delete` in `playground` ONLY — not a ClusterRole.
+- [ ] **ResourceQuota** + **LimitRange** on `playground`, so a runaway cannot eat the cluster or
+      trigger the node autoscaler.
+- [ ] A **CronJob** that wipes `playground` on a timer, so the public demo resets itself.
+- [ ] Only then: the `create` verb and the POST endpoint.
+
+**Order matters.** Ship the safeguards before the capability, not after — "add create now, secure
+it later" is how a demo becomes an incident. Build this *after* M9: the pipeline is what makes
+this a DevOps portfolio piece; the catalogue is a feature to add once there is somewhere to
+deploy it.
+
+Four objects the project hasn't touched yet — ResourceQuota, LimitRange, CronJob, and a
+namespaced Role — so it holds to the original rule that every feature drags curriculum with it.
+
 ## KCNA coverage tracker
 
 Exam domains and weights — **verify against the current CNCF curriculum**, they do get revised:
