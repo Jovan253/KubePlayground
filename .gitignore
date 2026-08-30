@@ -17,3 +17,19 @@ desktop.ini
 # Never commit cluster credentials
 kubeconfig
 *.kubeconfig
+
+# Terraform
+# State can contain sensitive values in PLAINTEXT — never commit it.
+# (One more reason to migrate to an S3 backend with encryption enabled.)
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+*.tfvars.json
+override.tf
+override_*.tf
+.terraformrc
+terraform.rc
+# .terraform.lock.hcl IS committed on purpose — it pins provider versions
+# so CI resolves exactly what you resolved locally.

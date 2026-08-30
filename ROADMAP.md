@@ -211,6 +211,34 @@ publicly on EKS.*
       `kubeplayground-api`.
 - [ ] Verify end to end against a live cluster — **not done yet, there is no cluster** (see above)
 
+### ☐ M5c — Readability pass
+*Noted 2026-08-30 after looking at the running UI in a browser for the first time. Jovan's read
+was "it feels quite dense"; the screenshots suggest the problem is not density — spacing and type
+are fine — but **priority**. The page shows the wrong things first.*
+
+Observed on a default load (all namespaces, 5 deployments, 17 pods):
+
+- [ ] **The app's own Deployment is the third card, below the fold.** Default view is
+      all-namespaces in API order, so `ingress-nginx-controller` and `coredns` lead. The
+      "you are here" banner literally promises a highlighted Pod "below" that isn't on screen.
+      Fix: sort `kubeplayground` and `playground` first, or default to hiding system namespaces
+      with a toggle. The banner and the thing it points at must be visible together.
+- [ ] **Superseded ReplicaSets dominate the card.** `kubeplayground-api` shows five, each with
+      its own "no pods — scaled to zero" line — roughly 200px of near-empty rows. Collapse to a
+      single expandable "4 superseded revisions" summary; the history is worth keeping, five
+      expanded rows of it is not.
+- [ ] **Image digests eat a full line.** `registry.k8s.io/ingress-nginx/controller:v1.15.1@sha256:594ceea76b01c...`
+      Truncate the digest, keep the tag, full value on hover or in the YAML pane.
+- [ ] **Scale buttons appear on kube-system workloads.** You can scale `coredns` and the ingress
+      controller from this UI. A genuine footgun rather than clutter — and it must not exist in a
+      public deployment. Restrict the control to namespaces the app is meant to manage.
+- [x] Fixed on sight: the collapsed transcript bar rendered `$ kubectl  kubectl describe ...` —
+      the label and the command both said "kubectl".
+
+Confirmed working when viewed: the ownership tree, "you are here" / "this app" markers, the YAML
+pane with syntax highlighting and the spec ↔ spec+status toggle, the stripped-fields panel, the
+kubectl transcript with standing reads separated from timestamped actions.
+
 ### ◐ M6 — Make it production-shaped
 - [x] **Liveness / readiness / startup probes** on `kubeplayground-api`, all three `httpGet` at
       `/api/health` on the named port `http`. Mistakes made and understood along the way, each of
