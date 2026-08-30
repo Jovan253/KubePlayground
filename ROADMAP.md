@@ -33,8 +33,8 @@ The app's requirements *are* the curriculum.
                     │
                     ▼
         ┌───────────────────────┐
-        │ Ingress (Traefik)     │   k3s ships Traefik by default
-        └───────────┬───────────┘
+        │ Ingress               │   NOTE: k3s shipped Traefik; Docker
+        └───────────┬───────────┘   Desktop ships no controller at all
                     ▼
         ┌───────────────────────┐
         │ Service (ClusterIP)   │  kubeplayground-api
@@ -64,24 +64,41 @@ The app's requirements *are* the curriculum.
 
 - **Backend:** Python 3.12, FastAPI, official `kubernetes` client
 - **Frontend:** plain HTML/CSS/JS to start; React only if it earns its place
-- **Cluster:** local k3s via Rancher Desktop (`rancher-desktop` context)
+- **Cluster:** local Docker Desktop Kubernetes (`docker-desktop`); EKS in M9
 - **Packaging:** raw manifests first → Helm chart later
 
 ---
 
 ## ⚠️ Safety rule
 
-The kubeconfig on this machine holds **two** contexts:
+The employer's `SHAREDSERVICES-01-AKS` context is **no longer on this machine** (see the
+environment note below), so the original hazard is currently absent. The habit stays: it costs
+nothing, and a second context returns the moment EKS lands in M9.
 
 | context | what it is |
 |---|---|
-| `rancher-desktop` | the local k3s sandbox — safe |
-| `SHAREDSERVICES-01-AKS` | **the employer's real AKS cluster** — never touch |
+| `docker-desktop` | the local sandbox — safe |
+| *(M9)* EKS | the AWS target — real infrastructure, real money |
 
 Every mutating command (`apply`, `delete`, `scale`, `edit`) gets an explicit
-`--context rancher-desktop`. Check with `kubectl config current-context` before anything else.
+`--context docker-desktop`. Check with `kubectl config current-context` before anything else.
 
 ---
+
+## ⚠️ Environment changed — 2026-08-30
+
+The machine no longer matches M0. **Rancher Desktop, WSL2 and k3s are gone**, along with the local
+Python venv and the `SHAREDSERVICES-01-AKS` context. `kubectl` and `docker` now come from
+**Docker Desktop**, whose built-in Kubernetes had never been enabled.
+
+Consequences to keep in mind when reading older entries below:
+
+- The local cluster is empty. Everything in `k8s/` has to be re-applied in dependency order.
+- **Docker Desktop ships no ingress controller.** k3s bundled Traefik, so `k8s/14-ingress.yaml`
+  (`ingressClassName: traefik`) currently routes nowhere. Either install ingress-nginx and change
+  the class, or fall back to `kubectl port-forward` until EKS.
+- `helm`, `aws`, `terraform` and `gh` are not installed. The last three are needed for M9.
+- The backend context guard now defaults to `docker-desktop`, not `rancher-desktop`.
 
 ## Milestones
 
@@ -166,10 +183,33 @@ Every mutating command (`apply`, `delete`, `scale`, `edit`) gets an explicit
       nested tree, superseded ReplicaSets shown greyed at zero so rollout history is visible.
       Needed a new `/api/replicasets` endpoint (two hops: Pod → RS → Deployment) and a new
       `replicasets` RBAC grant.
+- [x] Click a Pod → detail drawer with facts, Events and Logs. Needed an events endpoint;
+      Events are separate objects in the core group, filtered with a FIELD selector because
+      they carry no useful labels. Added an `events` RBAC grant.
 - [ ] **Flat/tree view toggle.** Verdict after using it: the flat grid scanned better, the tree
       explains better. Neither wins outright — keep both and let the viewer switch. ~15 lines.
-- [ ] Click a Pod → details, events, logs (the `/api/pods/{ns}/{name}/logs` endpoint is unused)
 - [ ] Polling → `watch` + WebSocket (the `watch` RBAC verb is already granted)
+
+### ◐ M5b — Make it a playground, not a dashboard
+*Chosen 2026-08-30. The complaint was fair: you could look, and you could scale. Nothing else.
+Both additions are READ-ONLY, which is the point — they need no new RBAC and stay safe to expose
+publicly on EKS.*
+- [x] **Show the kubectl for every action.** A transcript bar echoes each action as the command
+      that would have done the same thing, plus a standing list of the six reads the 3s poll
+      re-runs. The project is about muscle memory; a UI that hides the commands works against it.
+      Watching six commands repeat every three seconds is also the argument for `watch`.
+- [x] **Show the YAML.** Click any Deployment, ReplicaSet, Pod, Node or Service → the live
+      manifest, rendered twice: *as written* (what a human would have typed) and *as stored*
+      (what etcd actually holds). A panel lists what was stripped between the two — `status`,
+      `managedFields`, `uid`, `resourceVersion`, `ownerReferences`, the kubelet-injected
+      ServiceAccount token volume — so the removal is itself the lesson.
+      **This is the exam-facing feature:** it makes "spec is your intent, status is
+      system-written reality" something you can see rather than a slogan you repeat.
+- [x] Generalised `/api/pods/{ns}/{name}/events` into `/api/events?kind=&name=&namespace=`.
+      Field selectors match `involvedObject.kind` AND `.name`, comma-separated, because a name is
+      only unique within a kind — this repo has a Deployment *and* a Service both called
+      `kubeplayground-api`.
+- [ ] Verify end to end against a live cluster — **not done yet, there is no cluster** (see above)
 
 ### ☐ M6 — Make it production-shaped
 - [ ] Liveness / readiness / startup probes — and break each on purpose to see the effect
@@ -187,10 +227,39 @@ Every mutating command (`apply`, `delete`, `scale`, `edit`) gets an explicit
 - [ ] Concepts: the difference between logs, metrics, traces (KCNA asks)
 
 ### ☐ M8 — Delivery & polish
-- [ ] Package as a **Helm chart**
+- [ ] Package as a **Helm chart** (M9's deploy job then uses `helm upgrade --install`)
 - [ ] README with architecture diagram and screenshots — the portfolio artefact
-- [ ] *Optional, plays to existing strengths:* Terraform an AKS cluster and deploy there
-- [ ] *Optional:* GitHub Actions / GitLab CI to build and deploy
+
+### ☐ M9 — Ship it to AWS with GitHub Actions
+*Added 2026-08-30. Deliberately AWS + GitHub rather than Azure + GitLab: those are already
+day-job skills, and the gap is the thing worth closing.*
+
+**Cost decision.** EKS costs **$0.10/hr for the control plane alone (~$73/month) whether or not
+anything runs on it**, plus nodes, load balancer and NAT. So the environment is built to be
+**raised and destroyed on demand**, with `destroy` as a workflow you can trigger. "The pipeline
+stands the whole environment up from nothing" is a better story than a cluster idling at $100/mo.
+
+**How the Terraform gets written.** Incrementally, one AWS concept at a time. Jovan writes
+Terraform daily but has not used AWS — the unfamiliar part is the resources, not the language, so
+each step below lands separately with an explanation of what it creates and why AWS needs it.
+
+- [ ] **Step 1 — Identity.** GitHub OIDC provider + an IAM role Actions can assume. No long-lived
+      access keys in repo secrets, ever. The single most interview-relevant detail here.
+- [ ] **Step 2 — Registry.** ECR repository + lifecycle policy. The first point at which the image
+      needs a real registry: `imagePullPolicy: IfNotPresent` with a locally-built tag stops
+      working the moment the node is not your own laptop.
+- [ ] **Step 3 — Network.** VPC, subnets, routing. Why EKS wants multiple AZs; why a NAT gateway
+      costs real money, and how keeping nodes in public subnets avoids it.
+- [ ] **Step 4 — Cluster.** EKS control plane + a small managed node group. What AWS runs for you,
+      and what is still yours to run.
+- [ ] **Step 5 — Access.** EKS access entries — how an AWS IAM identity becomes a Kubernetes RBAC
+      subject. **The concept to actually understand:** authentication is AWS's job, authorisation
+      is still Kubernetes RBAC. Two systems, joined at exactly one seam.
+- [ ] **Workflows — Jovan writes these.** `terraform plan` on PR and `apply` on merge; build and
+      push to ECR; deploy; smoke-test `/api/health`; a manually-triggered `destroy`.
+- [ ] Concepts to be able to explain afterwards: OIDC federation vs static keys, why an image tag
+      must be treated as immutable, and what does and does not change about RBAC on a managed
+      cluster.
 
 ---
 
@@ -258,3 +327,14 @@ Newest last. One line per working session — what moved.
   no rollout, and `IfNotPresent` would keep serving cached bits. Treat tags as immutable.
   Left open: the ownership-chain visualisation (see M5), Pod detail/logs, and WebSocket.
   Next: M6, making it production-shaped — probes, limits, HPA, NetworkPolicy.
+- **2026-08-30** — **Environment rebuild + M5b.** Found the machine no longer matches `CLAUDE.md`:
+  Rancher Desktop, WSL2, k3s, the venv and the AKS context are all gone, and Docker Desktop's
+  Kubernetes had never been enabled. `CLAUDE.md` and the context guard in `main.py` corrected to
+  `docker-desktop`; the Traefik assumption in `k8s/14-ingress.yaml` is now wrong and unresolved.
+  Also found the roadmap trailing the code — the Pod detail drawer was built but still logged as
+  todo. Agreed two new directions: **M9**, ship to AWS via GitHub Actions using OIDC and no static
+  keys; and **M5b**, make the app a playground rather than a viewer. Built M5b's two features — a
+  kubectl transcript of every action, and a live-manifest viewer showing *as written* against
+  *as stored*. Both read-only, so no RBAC change, and safe to expose publicly later.
+  **Not yet verified against a live cluster** — there isn't one until Docker Desktop's Kubernetes
+  is enabled. Next: enable it, re-apply `k8s/` in dependency order, test M5b, then M6.

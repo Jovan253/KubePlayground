@@ -15,6 +15,7 @@ behaviour, and it decides by looking for a file that only exists inside a Pod.
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import logging
 import os
@@ -22,6 +23,7 @@ from typing import Any
 
 from pathlib import Path
 
+import yaml
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -34,7 +36,11 @@ log = logging.getLogger("kubeplayground")
 
 # Refuse to start against anything but this context when running locally.
 # Set KUBE_CONTEXT="" to disable the guard (don't).
-EXPECTED_CONTEXT = os.getenv("KUBE_CONTEXT", "rancher-desktop")
+#
+# Was "rancher-desktop" until 2026-08-30; the local cluster is now Docker
+# Desktop's built-in Kubernetes. The guard matters more, not less, once EKS
+# is in this kubeconfig alongside the sandbox.
+EXPECTED_CONTEXT = os.getenv("KUBE_CONTEXT", "docker-desktop")
 
 
 def load_config() -> str:
@@ -55,8 +61,10 @@ def load_config() -> str:
     contexts, active = config.list_kube_config_contexts()
     active_name = active["name"]
 
-    # Safety rail: this kubeconfig also holds a real employer AKS cluster.
-    # Scaling a Deployment there via a stray API call would be a bad afternoon.
+    # Safety rail. Originally because this kubeconfig also held the employer's
+    # AKS cluster; that context is gone from this machine, but the guard stays
+    # for when EKS lands next to the sandbox. Scaling a Deployment in the wrong
+    # cluster via a stray API call would be a bad afternoon.
     if EXPECTED_CONTEXT and active_name != EXPECTED_CONTEXT:
         available = ", ".join(c["name"] for c in contexts)
         raise RuntimeError(
@@ -328,14 +336,28 @@ def pod_logs(namespace: str, name: str, tail: int = Query(200, ge=1, le=5000)) -
     return {"namespace": namespace, "name": name, "logs": logs}
 
 
-@app.get("/api/pods/{namespace}/{name}/events")
-def pod_events(namespace: str, name: str) -> list[dict]:
-    """Events for one Pod — the list at the bottom of `kubectl describe`.
+@app.get("/api/events")
+def list_events(
+    kind: str = Query(..., description="involvedObject.kind, e.g. Pod or Deployment"),
+    name: str = Query(...),
+    namespace: str = Query(...),
+) -> list[dict]:
+    """Events about one object — the list at the bottom of `kubectl describe`.
 
-    Events are their own objects in the core group, not part of the Pod, so
-    they need a separate RBAC grant. They're filtered server-side with a FIELD
-    selector (matching on a value inside the object) rather than a LABEL
-    selector — events carry no useful labels.
+    Events are their own objects in the core group, NOT part of the object they
+    describe. That's why they need their own RBAC grant (`events`, in
+    k8s/11-rbac.yaml) and why deleting a Pod doesn't delete its history.
+
+    They're filtered server-side with a FIELD selector — matching on a value
+    inside the object — rather than a LABEL selector, because events carry no
+    useful labels. Two fields are matched, comma-separated, which the API server
+    treats as AND:
+
+        involvedObject.kind=Deployment,involvedObject.name=kubeplayground-api
+
+    Both halves are needed because a name is only unique WITHIN a kind. This
+    project has a Deployment and a Service both called `kubeplayground-api`;
+    filtering on name alone would blend their events into one list.
 
     Note: events are garbage-collected after about an hour by default, so an
     empty list means "nothing happened recently", not "nothing ever happened".
@@ -343,7 +365,7 @@ def pod_events(namespace: str, name: str) -> list[dict]:
     events = k8s_call(
         core_v1.list_namespaced_event,
         namespace,
-        field_selector=f"involvedObject.name={name}",
+        field_selector=f"involvedObject.kind={kind},involvedObject.name={name}",
     )
 
     def when(e):
@@ -366,6 +388,157 @@ def pod_events(namespace: str, name: str) -> list[dict]:
         }
         for e in items
     ]
+
+
+
+# --------------------------------------------------------------------------
+# Live manifests — "show me the YAML".
+#
+# Every object in a cluster is a document the API server stores in etcd. This
+# endpoint hands one back verbatim, and it is the most useful teaching surface
+# in the whole app: it needs NO new RBAC (`get` is already granted on all of
+# these) and it makes two lessons visible at once.
+#
+# Two renderings are returned, and the DIFFERENCE between them is the point:
+#
+#   full   what etcd actually holds. Includes `status` — written by controllers,
+#          never by you — plus every field the API server defaulted in during
+#          admission, plus `managedFields` bookkeeping.
+#   clean  the same object with the server's contributions stripped out:
+#          roughly what a human would have typed to produce it.
+#
+# Read them side by side and "spec is your intent, status is system-written
+# reality" stops being a slogan you repeat and becomes something you can see.
+# `stripped` lists what was removed, so the removal is itself the lesson.
+# --------------------------------------------------------------------------
+
+# kind -> (apiVersion, is_namespaced, reader). The client's read_* methods
+# return typed objects with api_version/kind left as None, so the apiVersion is
+# carried here and stamped back on below.
+#
+# This map is deliberately limited to what k8s/11-rbac.yaml grants `get` on.
+# Adding DaemonSets or Jobs here without adding the RBAC rule would produce a
+# button that 403s — the UI must not promise more than the ServiceAccount can do.
+_MANIFEST_KINDS: dict[str, tuple[str, bool, Any]] = {
+    "Pod": ("v1", True, lambda ns, n: core_v1.read_namespaced_pod(n, ns)),
+    "Service": ("v1", True, lambda ns, n: core_v1.read_namespaced_service(n, ns)),
+    "Namespace": ("v1", False, lambda ns, n: core_v1.read_namespace(n)),
+    "Node": ("v1", False, lambda ns, n: core_v1.read_node(n)),
+    "Deployment": ("apps/v1", True, lambda ns, n: apps_v1.read_namespaced_deployment(n, ns)),
+    "ReplicaSet": ("apps/v1", True, lambda ns, n: apps_v1.read_namespaced_replica_set(n, ns)),
+}
+
+# metadata keys the API server owns. You never write these; it writes them all.
+_SERVER_METADATA = (
+    "managedFields",     # which actor last owned which field — server-side apply
+    "uid",               # assigned at creation, never reused
+    "resourceVersion",   # etcd's optimistic-concurrency token; changes constantly
+    "generation",        # bumped by the server each time spec changes
+    "creationTimestamp",
+    "selfLink",          # deprecated, still emitted by some versions
+    "ownerReferences",   # written by the controller that created the object
+)
+
+# An annotation `kubectl apply` writes containing a full JSON copy of whatever
+# you last submitted. Enormous, and a duplicate of the object it sits on.
+_LAST_APPLIED = "kubectl.kubernetes.io/last-applied-configuration"
+
+
+def clean_manifest(doc: dict) -> tuple[dict, list[str]]:
+    """Strip what the server added. Returns (document, human-readable removals)."""
+    doc = copy.deepcopy(doc)
+    stripped: list[str] = []
+
+    if doc.pop("status", None) is not None:
+        stripped.append("status — written by controllers, never by you")
+
+    meta = doc.get("metadata", {})
+    for k in _SERVER_METADATA:
+        if meta.pop(k, None) is not None:
+            stripped.append(f"metadata.{k}")
+
+    if meta.get("annotations", {}).pop(_LAST_APPLIED, None) is not None:
+        stripped.append("the kubectl last-applied-configuration annotation")
+    # Removing the only annotation leaves an empty map, which nobody would write.
+    if meta.get("annotations") == {}:
+        meta.pop("annotations")
+
+    # The kubelet projects a ServiceAccount token into every Pod as a volume you
+    # never declared. It is the mechanism behind in-cluster auth — the very
+    # token this process authenticated with — but as YAML it is pure noise.
+    spec = doc.get("spec", {})
+    volumes = spec.get("volumes")
+    if isinstance(volumes, list):
+        injected = {
+            v["name"] for v in volumes if str(v.get("name", "")).startswith("kube-api-access-")
+        }
+        if injected:
+            spec["volumes"] = [v for v in volumes if v["name"] not in injected]
+            if not spec["volumes"]:
+                spec.pop("volumes")
+            for c in spec.get("containers", []):
+                mounts = [m for m in c.get("volumeMounts", []) if m.get("name") not in injected]
+                if mounts:
+                    c["volumeMounts"] = mounts
+                else:
+                    c.pop("volumeMounts", None)
+            stripped.append("the projected ServiceAccount token volume — kubelet-injected")
+
+    return doc, stripped
+
+
+def kubectl_get_yaml(kind: str, name: str, namespace: str | None) -> str:
+    """The command a human would type to see the same thing."""
+    ns = f" -n {namespace}" if namespace else ""
+    return f"kubectl get {kind.lower()} {name}{ns} -o yaml"
+
+
+@app.get("/api/manifest")
+def manifest(
+    kind: str = Query(..., description="Pod, Service, Deployment, ReplicaSet, Node, Namespace"),
+    name: str = Query(...),
+    namespace: str | None = Query(None, description="Omitted for cluster-scoped kinds"),
+) -> dict:
+    """The live YAML for one object — `kubectl get <kind> <name> -o yaml`.
+
+    Query parameters rather than a path like /api/manifest/{kind}/{ns}/{name}:
+    cluster-scoped kinds have no namespace segment, so a path would need two
+    routes and careful ordering against the catch-all static mount below.
+    """
+    entry = _MANIFEST_KINDS.get(kind)
+    if entry is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported kind {kind!r}. Known: {', '.join(sorted(_MANIFEST_KINDS))}",
+        )
+    api_version, namespaced, read = entry
+    if namespaced and not namespace:
+        raise HTTPException(status_code=400, detail=f"{kind} is namespaced — namespace required")
+
+    obj = k8s_call(read, namespace, name)
+
+    # sanitize_for_serialization turns the typed object back into the plain dict
+    # the API server actually sent: camelCase keys, None values dropped. This is
+    # the same representation kubectl prints.
+    doc = client.ApiClient().sanitize_for_serialization(obj)
+    doc = {"apiVersion": api_version, "kind": kind, **doc}
+
+    cleaned, stripped = clean_manifest(doc)
+
+    def dump(d: dict) -> str:
+        # sort_keys=False preserves apiVersion/kind/metadata/spec/status order,
+        # which is the order everyone reads Kubernetes YAML in.
+        return yaml.safe_dump(d, sort_keys=False, default_flow_style=False, width=100)
+
+    return {
+        "kind": kind,
+        "name": name,
+        "namespace": namespace,
+        "kubectl": kubectl_get_yaml(kind, name, namespace),
+        "full": dump(doc),
+        "clean": dump(cleaned),
+        "stripped": stripped,
+    }
 
 
 class ScaleRequest(BaseModel):

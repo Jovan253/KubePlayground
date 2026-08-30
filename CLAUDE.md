@@ -58,31 +58,65 @@ Decided at kickoff, 2026-08-25:
 
 ## Environment
 
-Windows 11. Local cluster is **Rancher Desktop** running single-node **k3s v1.33.3+k3s1** in WSL2
-(node `synldnlt8sglgs3`, docker runtime). No kind/minikube — not needed.
+**Changed on 2026-08-30 — the machine no longer matches the original setup.** Rancher Desktop and
+WSL2 are gone; there is no k3s. Do not trust older notes in `ROADMAP.md`'s session log about the
+local cluster.
 
-On PATH: `kubectl` v1.36, `helm`, `docker` (all via Rancher Desktop), Node.js, Python 3.12.
-**`go` is not installed.**
+Windows 11. Local cluster is **Docker Desktop's built-in Kubernetes** (context `docker-desktop`),
+single node `desktop-control-plane`, **Kubernetes v1.36.1**.
 
-k3s specifics that affect manifests: **Traefik** is the built-in ingress controller (don't install
-nginx-ingress) and **local-path** is the default StorageClass.
+Docker Desktop now provisions that cluster with **kind** under the hood (`kindest/node:v1.36.1`),
+not the old kubeadm-on-the-host setup — so the container runtime is **containerd 2.3.1**, not
+docker. Docker itself is on the containerd image store, and Docker Desktop runs a registry mirror
+(`desktop-containerd-registry-mirror`) plus `desktop-cloud-provider-kind` for LoadBalancer
+Services.
 
-## ⚠️ Two contexts — safety rule
+On PATH: `kubectl` and `docker` (both via Docker Desktop), Node.js, Python **3.11**.
+**Not installed:** `helm`, `go`, `aws`, `terraform`, `gh` — the last three are needed for M9.
+WSL2 *is* present after all (distros: `Ubuntu`, stopped; `docker-desktop`, running) — enabling
+Kubernetes installed it.
+
+Docker Desktop specifics that affect manifests — these differ from k3s and bit us already:
+
+- **No ingress controller ships with it.** k3s bundled Traefik; Docker Desktop bundles nothing.
+  **Installed 2026-08-30:** ingress-nginx `controller-v1.15.1`, cloud provider variant, which
+  creates the `nginx` IngressClass. `k8s/14-ingress.yaml` must therefore say
+  `ingressClassName: nginx`, not `traefik`.
+
+  Reinstall command if the cluster is ever reset:
+  ```powershell
+  kubectl --context docker-desktop apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/cloud/deploy.yaml
+  ```
+- **LoadBalancer Services work and map to localhost.** The controller Service gets an external IP
+  on the Docker network (e.g. `172.18.0.5`) which is NOT reachable from Windows, but Docker Desktop
+  forwards `localhost:80` to it — so `http://localhost/` is still the entry point, exactly as it
+  was under Traefik. A bare `http://localhost/` with no matching Ingress rule returns a 404 from
+  nginx's default backend, which is a *healthy* answer, not a failure.
+- StorageClasses are `standard` (**the default**) and `hostpath`. Both use the
+  `rancher.io/local-path` provisioner — the same one k3s used.
+- **Images:** unverified whether a locally-built tag is visible to the cluster. The old Docker
+  Desktop shared one dockerd with Kubernetes, which is what made `imagePullPolicy: IfNotPresent`
+  work with no registry (see M3). The kind-based cluster has its own containerd, with a registry
+  mirror bridging the two. TEST THIS before assuming M3's note still holds.
+
+## ⚠️ Context safety rule
+
+The employer's `SHAREDSERVICES-01-AKS` context is **not on this machine any more**, so the original
+hazard is currently absent. The habit stays anyway — it costs nothing and the context will come
+back the moment that kubeconfig is restored, or once EKS is added alongside local.
 
 | context | what it is |
 |---|---|
-| `rancher-desktop` | the local k3s sandbox — safe, this is the playground |
-| `SHAREDSERVICES-01-AKS` | **the employer's real AKS cluster**, default ns `nexusproposal-uat` |
+| `docker-desktop` | the local sandbox — safe, this is the playground |
+| *(future)* EKS | the AWS deployment target — real infrastructure, real money |
 
-`rancher-desktop` is normally active, but **never assume it**. Every mutating command
-(`apply`, `delete`, `scale`, `edit`) must pass `--context rancher-desktop` explicitly, or the
-active context must be verified first:
+Every mutating command (`apply`, `delete`, `scale`, `edit`) passes `--context docker-desktop`
+explicitly, or the active context is verified first:
 
 ```powershell
 kubectl config current-context
 ```
 
-An `apply` or `delete` that lands on the AKS context would hit production-adjacent infrastructure.
 
 ## Layout
 
