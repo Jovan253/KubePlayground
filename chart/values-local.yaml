@@ -1,0 +1,6 @@
+# Docker Desktop. The image lives in the local store; the registry mirror serves
+# it to the node, so no registry path is needed.
+image:
+  repository: kubeplayground-api
+  tag: "0.8.0"
+  pullPolicy: IfNotPresent

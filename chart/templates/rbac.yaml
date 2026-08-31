@@ -1,0 +1,64 @@
+{{/*
+ClusterRole rather than Role: the app lists Pods across ALL namespaces, and
+Nodes and Namespaces are cluster-scoped, which no namespaced Role can reach.
+
+Cluster-scoped objects are NOT namespaced by the release, so two installs in
+different namespaces would collide on this name. Prefixing with the release
+name keeps them distinct.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-reader
+  labels:
+    {{- include "kubeplayground.labels" . | nindent 4 }}
+rules:
+  # "" is the CORE api group — not "core", not "v1".
+  - apiGroups: [""]
+    resources: ["pods", "services", "namespaces", "nodes", "events"]
+    verbs: ["get", "list", "watch"]
+
+  # Subresources are separate RBAC targets: `get` on pods does NOT grant logs.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+
+  # Ingresses are in networking.k8s.io — neither core nor apps.
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+
+  # The scale button. `patch` on deployments/scale WITHOUT `patch` on
+  # deployments: the app can change replica counts and nothing else. Granting
+  # patch on deployments would mean it could rewrite spec.template — a new
+  # image, a hostPath mount, privileged: true — which is arbitrary code
+  # execution on every node.
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["patch"]
+
+  # Deliberately NOT granted: secrets, create/delete, */exec.
+  # RBAC is additive with no deny rules, so least privilege means granting less.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-reader
+  labels:
+    {{- include "kubeplayground.labels" . | nindent 4 }}
+# roleRef is IMMUTABLE — pointing this at a different role means delete and
+# recreate.
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.name }}
+    # Required even though the binding is cluster-scoped: ServiceAccounts are
+    # namespaced, so the name alone is ambiguous.
+    namespace: {{ .Release.Namespace }}

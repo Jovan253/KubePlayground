@@ -1,0 +1,23 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "kubeplayground.name" . }}
+  labels:
+    {{- include "kubeplayground.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    # Omitting `host` entirely means the rule matches ANY host. Setting it to ""
+    # is not the same thing, hence the conditional.
+    - {{ if .Values.ingress.host }}host: {{ .Values.ingress.host | quote }}
+      {{ end }}http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kubeplayground.name" . }}-api
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}

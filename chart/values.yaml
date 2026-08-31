@@ -1,0 +1,39 @@
+# Defaults. Override per cluster with -f values-local.yaml or -f values-eks.yaml.
+
+replicaCount: 1
+
+image:
+  repository: kubeplayground-api
+  tag: "0.8.0"
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  name: kubeplayground-sa
+
+service:
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  # Empty host = match any host. Set one to route by hostname instead.
+  host: ""
+
+# Measured from the container's cgroup rather than guessed — see ROADMAP M6.
+# Idle 6m CPU / 81 MiB; ~142m under load.
+resources:
+  requests:
+    cpu: 120m
+    memory: 96Mi
+  limits:
+    cpu: 700m
+    memory: 160Mi
+
+probes:
+  path: /api/health
+  # A generous boot budget via startup, then fast detection afterwards.
+  startup:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 3
+  periodSeconds: 5

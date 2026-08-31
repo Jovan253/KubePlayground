@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kubeplayground.name" . }}-api
+  labels:
+    {{- include "kubeplayground.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  # A plain map, unlike a Deployment's selector.matchLabels.
+  selector:
+    {{- include "kubeplayground.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: {{ .Values.service.port }}
+      # Named port, resolved against the container's declared containerPort.
+      targetPort: http
+      protocol: TCP

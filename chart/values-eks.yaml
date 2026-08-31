@@ -1,0 +1,15 @@
+# EKS. The node pulls from ECR using AmazonEC2ContainerRegistryReadOnly on its
+# instance role — no imagePullSecret involved.
+#
+# `tag` is a placeholder: CI overrides it per deploy with
+#   --set image.tag=$GITHUB_SHA
+# so the running image always traces back to a commit.
+image:
+  repository: 436535003124.dkr.ecr.eu-west-2.amazonaws.com/kubeplayground
+  tag: "REPLACED_BY_CI"
+  pullPolicy: IfNotPresent
+
+# No ingress controller is installed on the EKS cluster yet, so nothing would
+# act on an Ingress. Reach the app with port-forward until one exists.
+ingress:
+  enabled: false

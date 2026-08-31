@@ -1,0 +1,10 @@
+apiVersion: v2
+name: kubeplayground
+description: A web app that visualises the Kubernetes cluster it runs inside.
+type: application
+
+# version    = the CHART's version. Bump when the templates change.
+# appVersion = the version of the APP being deployed. Informational only; the
+#              image tag comes from values, not from here.
+version: 0.1.0
+appVersion: "0.8.0"
