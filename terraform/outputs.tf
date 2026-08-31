@@ -16,3 +16,8 @@ output "trusted_subject" {
   description = "The only `sub` claim permitted to assume the role."
   value       = local.github_subject
 }
+
+output "ecr_repository_url" {
+  description = "Registry path for docker build/push and for the image: field."
+  value       = aws_ecr_repository.api.repository_url
+}

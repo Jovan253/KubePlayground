@@ -1,0 +1,59 @@
+name: Build and push
+
+on:
+  push:
+    branches: [main]
+    # Don't rebuild the image for a README or roadmap edit.
+    paths:
+      - backend/**
+      - frontend/**
+      - .github/workflows/build-and-push.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-west-2
+  ROLE_ARN: arn:aws:iam::436535003124:role/kubeplayground-github-actions
+  REPO_NAME: kubeplayground
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-build-push
+
+      # `id` matters: later steps read steps.ecr.outputs.registry, which is the
+      # account-specific hostname (<account>.dkr.ecr.<region>.amazonaws.com).
+      # This step also runs the docker login for you.
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.REPO_NAME }}:${{ github.sha }}
+        run: |
+          docker build -f backend/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_STEP_SUMMARY"
+
+      # The digest is the real content identity — a tag is a mutable pointer,
+      # a digest is a hash of the bits. Step 4 deploys by digest so the cluster
+      # can never run something other than what CI built.
+      - name: Report digest
+        run: |
+          aws ecr describe-images \
+            --repository-name "$REPO_NAME" \
+            --image-ids imageTag="${{ github.sha }}" \
+            --query 'imageDetails[0].imageDigest' --output text
