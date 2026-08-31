@@ -21,3 +21,12 @@ output "ecr_repository_url" {
   description = "Registry path for docker build/push and for the image: field."
   value       = aws_ecr_repository.api.repository_url
 }
+
+output "vpc_id" {
+  value = aws_vpc.main.id
+}
+
+output "public_subnet_ids" {
+  description = "Passed to the EKS cluster and node group in step 4."
+  value       = [for s in aws_subnet.public : s.id]
+}
