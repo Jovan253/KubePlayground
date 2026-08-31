@@ -173,6 +173,35 @@ Consequences to keep in mind when reading older entries below:
 - [x] Ingress YAML nesting: `rules`/`paths` are lists, `http`/`backend`/`service`/`port` are maps
 - [x] `pathType` is required — `Prefix` / `Exact` / `ImplementationSpecific`
 
+### ☐ M4b — Two more sites behind the same Ingress
+*Jovan's idea, 2026-08-31: two extra namespaces each serving a real web page, routed to from the
+same controller. Demonstrates what an Ingress controller is actually FOR — host/path-based virtual
+hosting, many sites behind one entry point — which the single-app setup never shows.*
+
+Note that `playground/my-deployment` is already a second website: nginx serving the `index.html`
+from the `hello-config` ConfigMap. It is unreachable from a browser only because no Ingress rule
+points at it.
+
+- [ ] Two namespaces (`site-a`, `site-b` or similar), each with a Deployment + Service + a
+      ConfigMap-served page. Cheap: `nginx:alpine` with the HTML mounted from a ConfigMap, exactly
+      like `k8s/02-deployment.yaml` and `k8s/04-configmap.yaml` already do.
+- [ ] **One Ingress per namespace.** An Ingress can only name a Service in its OWN namespace —
+      the cross-namespace reference rule already learned in M3. This is where that constraint
+      stops being trivia and shapes the design.
+- [ ] Pick host-based or path-based routing, and understand why the choice matters:
+      - **Host-based** — `site-a.localhost`, `site-b.localhost`. Browsers resolve `*.localhost`
+        to 127.0.0.1 with no hosts-file edit, and it needs no path rewriting. Cleanest.
+      - **Path-based** — `/site-a`, `/site-b`. Looks simpler but nginx forwards the full path, so
+        the backend gets `/site-a/index.html` and 404s. Needs
+        `nginx.ingress.kubernetes.io/rewrite-target`, which is a genuinely instructive gotcha and
+        the reason path-based routing has a reputation.
+- [ ] The existing Ingress has NO `host:` and `path: /` with `pathType: Prefix`, so it currently
+      matches everything. Adding siblings forces that to be disambiguated — which is the real
+      lesson about how a controller picks a rule.
+- [ ] Payoff for the UI: three apps in three namespaces makes the namespace filter and the
+      ownership tree demonstrate something, instead of showing one app next to kube-system noise.
+      Pairs well with M5c.
+
 ### ◐ M5 — The frontend
 - [x] Static HTML/JS served by FastAPI (`frontend/index.html`, mounted at `/`, last route)
 - [x] Live-updating grid of Pods with phase/status colouring; 3s poll with pause

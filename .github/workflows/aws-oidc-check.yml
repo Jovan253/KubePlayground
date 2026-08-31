@@ -1,0 +1,27 @@
+# Proves GitHub Actions can authenticate to AWS with no stored credentials.
+# Assumes the role created by terraform/github-oidc.tf and asks AWS who it is.
+
+name: AWS OIDC check
+
+on:
+  workflow_dispatch: # manual only — run it from the Actions tab
+
+# Declaring this block sets everything not listed to `none`.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  whoami:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Assume the AWS role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::436535003124:role/kubeplayground-github-actions
+          aws-region: eu-west-2
+          role-session-name: gha-oidc-check
+
+      - name: Who am I in AWS?
+        run: aws sts get-caller-identity
