@@ -8,6 +8,9 @@ on:
 
 # Declaring this block sets everything not listed to `none`.
 permissions:
+  # Lets the run request a signed JWT describing itself. Despite the name it
+  # grants no write access to anything. Omit it and the AWS step below fails with
+  # an error that never mentions OIDC.
   id-token: write
   contents: read
 
@@ -16,12 +19,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Diagnostic. Runs BEFORE the assume step so it still reports when that
+      # fails. The trust policy matches on `sub` with StringEquals — which is
+      # case-sensitive and exact — so when AssumeRoleWithWebIdentity is refused,
+      # the first question is always "what did the token actually say?".
+      #
+      # Prints only selected claims. NEVER echo the token itself: anyone holding
+      # it can assume the role until it expires.
+      - name: Show OIDC claims
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, urllib.request
+
+          url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=sts.amazonaws.com"
+          req = urllib.request.Request(
+              url,
+              headers={"Authorization": "bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]},
+          )
+          token = json.load(urllib.request.urlopen(req))["value"]
+
+          # A JWT is header.payload.signature, each base64url. Re-pad the payload
+          # before decoding — base64url in JWTs is stored unpadded.
+          payload = token.split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+
+          for k in ("sub", "aud", "repository", "ref", "workflow", "environment", "iss"):
+              print(f"{k:12} {claims.get(k)}")
+          PY
+
       - name: Assume the AWS role
         uses: aws-actions/configure-aws-credentials@v4
         with:
+          # Not a secret: useless without a token whose `sub` matches the trust
+          # policy, which only this repo on `main` can produce.
           role-to-assume: arn:aws:iam::436535003124:role/kubeplayground-github-actions
           aws-region: eu-west-2
+          # Shows up in CloudTrail — makes AWS-side audit logs readable.
           role-session-name: gha-oidc-check
 
+      # Always permitted, needs no IAM policy, so it works against a role with
+      # zero permissions attached.
       - name: Who am I in AWS?
         run: aws sts get-caller-identity
