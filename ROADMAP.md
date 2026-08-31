@@ -173,7 +173,7 @@ Consequences to keep in mind when reading older entries below:
 - [x] Ingress YAML nesting: `rules`/`paths` are lists, `http`/`backend`/`service`/`port` are maps
 - [x] `pathType` is required — `Prefix` / `Exact` / `ImplementationSpecific`
 
-### ☐ M4b — Two more sites behind the same Ingress
+### ☑ M4b — Two more sites behind the same Ingress
 *Jovan's idea, 2026-08-31: two extra namespaces each serving a real web page, routed to from the
 same controller. Demonstrates what an Ingress controller is actually FOR — host/path-based virtual
 hosting, many sites behind one entry point — which the single-app setup never shows.*
@@ -182,25 +182,39 @@ Note that `playground/my-deployment` is already a second website: nginx serving 
 from the `hello-config` ConfigMap. It is unreachable from a browser only because no Ingress rule
 points at it.
 
-- [ ] Two namespaces (`site-a`, `site-b` or similar), each with a Deployment + Service + a
+- [x] Two namespaces (`site-a`, `site-b`), each with a Deployment + Service + a
       ConfigMap-served page. Cheap: `nginx:alpine` with the HTML mounted from a ConfigMap, exactly
       like `k8s/02-deployment.yaml` and `k8s/04-configmap.yaml` already do.
-- [ ] **One Ingress per namespace.** An Ingress can only name a Service in its OWN namespace —
+- [x] **One Ingress per namespace.** An Ingress can only name a Service in its OWN namespace —
       the cross-namespace reference rule already learned in M3. This is where that constraint
       stops being trivia and shapes the design.
-- [ ] Pick host-based or path-based routing, and understand why the choice matters:
+- [x] Host-based routing chosen. Why the choice matters:
       - **Host-based** — `site-a.localhost`, `site-b.localhost`. Browsers resolve `*.localhost`
         to 127.0.0.1 with no hosts-file edit, and it needs no path rewriting. Cleanest.
       - **Path-based** — `/site-a`, `/site-b`. Looks simpler but nginx forwards the full path, so
         the backend gets `/site-a/index.html` and 404s. Needs
         `nginx.ingress.kubernetes.io/rewrite-target`, which is a genuinely instructive gotcha and
         the reason path-based routing has a reputation.
-- [ ] The existing Ingress has NO `host:` and `path: /` with `pathType: Prefix`, so it currently
+- [x] The existing Ingress has NO `host:` and `path: /` with `pathType: Prefix`, so it currently
       matches everything. Adding siblings forces that to be disambiguated — which is the real
       lesson about how a controller picks a rule.
-- [ ] Payoff for the UI: three apps in three namespaces makes the namespace filter and the
+- [x] Payoff for the UI: three apps in three namespaces makes the namespace filter and the
       ownership tree demonstrate something, instead of showing one app next to kube-system noise.
       Pairs well with M5c.
+
+**Verified 2026-08-31.** All three reachable simultaneously through one controller:
+
+    kubeplayground   nginx   *                  <- catch-all, no host
+    site-a           nginx   site-a.localhost
+    site-b           nginx   site-b.localhost
+
+Precedence confirmed: a specific `host:` rule beats the host-less catch-all, so KubePlayground
+still answers plain `http://localhost/`.
+
+Only defect on review: both Ingresses were missing `apiVersion: networking.k8s.io/v1`. Everything
+else — namespace-per-Ingress, the ConfigMap volume mount, matching selectors, `pathType` — was
+right first time. Worth noting the failure mode: a missing `apiVersion` is one of the few things
+Kubernetes rejects outright rather than accepting silently.
 
 ### ◐ M5 — The frontend
 - [x] Static HTML/JS served by FastAPI (`frontend/index.html`, mounted at `/`, last route)
@@ -239,6 +253,33 @@ publicly on EKS.*
       only unique within a kind — this repo has a Deployment *and* a Service both called
       `kubeplayground-api`.
 - [ ] Verify end to end against a live cluster — **not done yet, there is no cluster** (see above)
+
+### ☑ M4c — Reachability links, and `playground` retired
+*2026-08-31.*
+
+- [x] **`playground` namespace deleted**, along with `k8s/01-pod.yaml` … `04-configmap.yaml` and
+      its block in `00-namespaces.yaml`. Those were the M1 hand-written learning objects; they
+      served their purpose and `site-a`/`site-b` are better demo material. Still in git history if
+      ever wanted back. (M1's notes below refer to them by name — the files are gone, the lessons
+      stand.)
+- [x] **`/api/ingresses`** + a link chip on every Deployment the cluster can actually route to.
+      Needed a new RBAC grant: Ingresses are in the `networking.k8s.io` group, neither core nor
+      apps, so `get list watch` on `ingresses` was added to `11-rbac.yaml`. Read-only — the app
+      still cannot change routing.
+- [x] The link resolution is **Ingress → Service → Deployment**, and the middle hop is different
+      in kind from the rest of the tree: Pod → ReplicaSet → Deployment is recorded as data in
+      `ownerReferences`, but a Service finds its Pods by **label selector**, so nothing stores
+      that relationship. The UI has to match `service.spec.selector` against the Deployment's own
+      selector to infer it. Worth understanding: selectors are a query, not a link.
+- [x] Correctly shows **no** link for `coredns` and `local-path-provisioner` — nothing routes to
+      them.
+
+**Bonus lesson, accidentally.** `12-api-deployment.yaml` was bumped to `0.8.0` before the image
+was built, so the new ReplicaSet sat in `ImagePullBackOff` for 22 hours — and the site stayed up
+the entire time. The rollout never completed, so the old ReplicaSet was never scaled down. That
+is the rolling-update safety net doing exactly its job, and a much better demonstration of it
+than a deliberate test would have been. Once the image existed, deleting the stuck Pod was faster
+than waiting out the exponential backoff.
 
 ### ☐ M5c — Readability pass
 *Noted 2026-08-30 after looking at the running UI in a browser for the first time. Jovan's read

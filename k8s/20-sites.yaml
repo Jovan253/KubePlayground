@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: site-a
+  labels:
+    app.kubernetes.io/part-of: kubeplayground
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: site-b
+  labels:
+    app.kubernetes.io/part-of: kubeplayground

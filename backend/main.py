@@ -107,6 +107,7 @@ SELF = {
 
 core_v1 = client.CoreV1Api()
 apps_v1 = client.AppsV1Api()
+networking_v1 = client.NetworkingV1Api()
 version_api = client.VersionApi()
 
 app = FastAPI(
@@ -361,6 +362,59 @@ def pod_logs(namespace: str, name: str, tail: int = Query(200, ge=1, le=5000)) -
         core_v1.read_namespaced_pod_log, name=name, namespace=namespace, tail_lines=tail
     )
     return {"namespace": namespace, "name": name, "logs": logs}
+
+
+@app.get("/api/ingresses")
+def list_ingresses(namespace: str | None = Query(None)) -> list[dict]:
+    """Which workloads are reachable from a browser, and at what URL.
+
+    Ingresses are in the `networking.k8s.io` API group — not core, not apps — so
+    they need their own RBAC rule (added to k8s/11-rbac.yaml alongside this).
+
+    An Ingress is only routing RULES. The controller acting on them is a separate
+    workload, and rules with no controller watching route nothing, so a URL here
+    means "this is what the rule says", not "this definitely answers".
+    """
+    if namespace:
+        ings = k8s_call(networking_v1.list_namespaced_ingress, namespace)
+    else:
+        ings = k8s_call(networking_v1.list_ingress_for_all_namespaces)
+
+    out = []
+    for i in ings.items:
+        rules = []
+        for r in (i.spec.rules or []):
+            paths = []
+            http = getattr(r, "http", None)
+            for pth in (http.paths if http else []) or []:
+                svc = getattr(pth.backend, "service", None)
+                if svc is None:
+                    continue  # a resource backend (rare) — nothing to link to
+                port = svc.port
+                rules_port = port.number if port and port.number else (port.name if port else None)
+                paths.append(
+                    {
+                        "path": pth.path or "/",
+                        "pathType": pth.path_type,
+                        "serviceName": svc.name,
+                        "servicePort": rules_port,
+                    }
+                )
+            # No host means the rule matches ANY host, which is why the
+            # KubePlayground Ingress still answers plain http://localhost/ even
+            # with site-a and site-b registered.
+            rules.append({"host": r.host, "paths": paths})
+
+        out.append(
+            {
+                "name": i.metadata.name,
+                "namespace": i.metadata.namespace,
+                "className": i.spec.ingress_class_name,
+                "rules": rules,
+                "ageSeconds": age_seconds(i),
+            }
+        )
+    return out
 
 
 @app.get("/api/events")

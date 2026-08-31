@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: site-a-config
+  namespace: site-a
+  labels:
+    app: site-a
+data:
+  index.html: |
+    <html>
+      Welcome to Site A!
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site-a-deployment
+  namespace: site-a
+  labels:
+    app: site-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: site-a
+  template:
+    metadata:
+      labels:
+        app: site-a
+    spec:
+      containers:
+        - name: site-a-container
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: html
+          configMap:
+            name: site-a-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: site-a-api
+  namespace: site-a
+  labels:
+    app: site-a
+spec:
+  type: ClusterIP
+  selector:
+    app: site-a
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: site-a-ingress
+  namespace: site-a
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "site-a.localhost"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: site-a-api
+                port:
+                  number: 80

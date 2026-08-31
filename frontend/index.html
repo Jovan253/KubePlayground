@@ -162,6 +162,14 @@
     background: color-mix(in srgb, var(--accent) 12%, var(--panel));
   }
   .owner.self { border-color: color-mix(in srgb, var(--accent) 55%, var(--rule)); }
+  .site-link {
+    font-family: var(--mono); font-size: .66rem; text-decoration: none;
+    color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
+    background: color-mix(in srgb, var(--ok) 10%, transparent);
+    padding: .1rem .4rem; border-radius: 3px; white-space: nowrap;
+  }
+  .site-link:hover { background: color-mix(in srgb, var(--ok) 20%, transparent); }
+
   .self-tag {
     font-family: var(--mono); font-size: .58rem; letter-spacing: .08em; text-transform: uppercase;
     color: var(--bg); background: var(--accent); padding: .08rem .3rem; border-radius: 2px;
@@ -552,7 +560,7 @@ function podChip(p) {
     </div>`;
 }
 
-function deploymentCard(d, replicaSets, podsByOwner, isSelf) {
+function deploymentCard(d, replicaSets, podsByOwner, isSelf, url) {
   const pct = d.desired ? Math.round((d.ready / d.desired) * 100) : 0;
   const partial = d.ready !== d.desired ? ' partial' : '';
 
@@ -590,6 +598,7 @@ function deploymentCard(d, replicaSets, podsByOwner, isSelf) {
           <span class="owner-name">${esc(d.name)}</span>
           <span class="owner-ns">${esc(d.namespace)}</span>
           ${isSelf ? '<span class="self-tag">this app</span>' : ''}
+          ${url ? `<a class="site-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)} \u2197</a>` : ''}
         </div>
         <div class="owner-img">${esc(d.images.join(', '))}</div>
         <div class="bar${partial}"><i style="width:${pct}%"></i></div>
@@ -624,7 +633,43 @@ function otherOwnerCard(kind, name, ns, pods) {
     </div>`;
 }
 
-function renderTree(deploys, replicasets, pods) {
+// Ingress -> Service -> Deployment, to answer "what URL reaches this workload?".
+//
+// The middle hop is a label match, not an ownerReference: a Service finds Pods
+// by selector, so nothing records the link as stored data the way Pod -> RS ->
+// Deployment does. A Service belongs to a Deployment here if every key in the
+// Service's selector matches the Deployment's own selector.
+function buildUrlIndex(deploys, services, ingresses) {
+  const serviceUrl = new Map();
+  for (const ing of ingresses) {
+    for (const rule of ing.rules) {
+      for (const p of rule.paths) {
+        // No host on the rule means it matches any host, so localhost will do.
+        const host = rule.host || 'localhost';
+        const path = p.path && p.path !== '/' ? p.path : '';
+        serviceUrl.set(key(ing.namespace, 'Service', p.serviceName), `http://${host}${path}/`);
+      }
+    }
+  }
+
+  const matches = (svcSel, depSel) => {
+    const keys = Object.keys(svcSel || {});
+    return keys.length > 0 && keys.every(k => depSel[k] === svcSel[k]);
+  };
+
+  const deploymentUrl = new Map();
+  for (const d of deploys) {
+    for (const s of services) {
+      if (s.namespace !== d.namespace || !matches(s.selector, d.selector)) continue;
+      const url = serviceUrl.get(key(s.namespace, 'Service', s.name));
+      if (url) { deploymentUrl.set(key(d.namespace, 'Deployment', d.name), url); break; }
+    }
+  }
+  return deploymentUrl;
+}
+
+function renderTree(deploys, replicasets, pods, services = [], ingresses = []) {
+  const urlFor = buildUrlIndex(deploys, services, ingresses);
   // index: owner key -> children
   const podsByOwner = new Map();
   const orphanPods = [];
@@ -667,7 +712,7 @@ function renderTree(deploys, replicasets, pods) {
   for (const d of deploys) {
     const dKey = key(d.namespace, 'Deployment', d.name);
     const sets = rsByDeployment.get(dKey) || [];
-    blocks.push(deploymentCard(d, sets, podsByOwner, dKey === selfDeployKey));
+    blocks.push(deploymentCard(d, sets, podsByOwner, dKey === selfDeployKey, urlFor.get(dKey)));
   }
 
   // Pods owned by something that isn't a Deployment-managed ReplicaSet:
@@ -761,6 +806,8 @@ function renderStanding() {
     `kubectl get deployments ${scope}`,
     `kubectl get replicasets ${scope}`,
     `kubectl get pods ${scope} -o wide`,
+    `kubectl get services ${scope}`,
+    `kubectl get ingress ${scope}`,
   ].map(c => `<div>$ ${esc(c)}</div>`).join('');
 }
 
@@ -974,6 +1021,7 @@ async function loadDetail() {
 // Delegated, so re-rendering never orphans a handler. Anything carrying
 // data-kind is drillable; the tree and the node list both opt in that way.
 function drillFrom(target) {
+  if (target.closest('a')) return false;   // let links navigate
   const el = target.closest('[data-kind]');
   if (!el) return false;
   const { kind, ns, name } = el.dataset;
@@ -1002,18 +1050,21 @@ async function refresh() {
   if (inFlight) return;
   inFlight = true;
   try {
-    const [info, namespaces, deploys, replicasets, pods, nodes] = await Promise.all([
-      api('/api/cluster'),
-      api('/api/namespaces'),
-      api('/api/deployments' + qs()),
-      api('/api/replicasets' + qs()),
-      api('/api/pods' + qs()),
-      api('/api/nodes'),
-    ]);
+    const [info, namespaces, deploys, replicasets, pods, nodes, services, ingresses] =
+      await Promise.all([
+        api('/api/cluster'),
+        api('/api/namespaces'),
+        api('/api/deployments' + qs()),
+        api('/api/replicasets' + qs()),
+        api('/api/pods' + qs()),
+        api('/api/nodes'),
+        api('/api/services' + qs()),
+        api('/api/ingresses' + qs()),
+      ]);
     lastPods = pods;
     renderFacts(info);
     renderNamespaces(namespaces);
-    renderTree(deploys, replicasets, pods);
+    renderTree(deploys, replicasets, pods, services, ingresses);
     renderNodes(nodes);
     clearError();
     if (openObj) loadDetail();   // keep the open drawer live too

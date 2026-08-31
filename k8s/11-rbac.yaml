@@ -53,6 +53,13 @@ rules:
     resources: ["deployments/scale"]
     verbs: ["patch"]
 
+  # Ingresses live in the networking.k8s.io group, not core and not apps.
+  # Read-only: the UI uses these to work out which workloads are reachable from
+  # a browser and to render a link. Nothing here lets the app change routing.
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+
   # Deliberately NOT granted:
   #   secrets       — an app that can read Secrets cluster-wide is a real hole
   #   create/delete — this app observes and scales; it does not deploy

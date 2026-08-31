@@ -4,10 +4,3 @@ metadata:
   name: kubeplayground
   labels:
     app.kubernetes.io/part-of: kubeplayground
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: playground
-  labels:
-    app.kubernetes.io/part-of: kubeplayground
