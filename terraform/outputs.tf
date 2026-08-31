@@ -14,5 +14,5 @@ output "github_actions_role_arn" {
 
 output "trusted_subject" {
   description = "The only `sub` claim permitted to assume the role."
-  value       = "repo:${var.github_repo}:ref:refs/heads/${var.github_branch}"
+  value       = local.github_subject
 }

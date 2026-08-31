@@ -3,7 +3,7 @@
 # The identity provider: "AWS, trust tokens signed by GitHub Actions."
 resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
-  
+
   client_id_list = ["sts.amazonaws.com"]
 }
 
@@ -14,6 +14,25 @@ resource "aws_iam_openid_connect_provider" "github" {
 # in this repo is recoverable; getting this wrong hands your AWS account to
 # strangers.
 # ---------------------------------------------------------------------------
+locals {
+  gh_owner = split("/", var.github_repo)[0]
+  gh_name  = split("/", var.github_repo)[1]
+
+  # GitHub issues IMMUTABLE subject claims: every name carries its numeric ID.
+  #
+  #   repo:<owner>@<owner_id>/<name>@<repo_id>:ref:refs/heads/<branch>
+  #
+  # Names are mutable — delete a repo or rename an account and someone else can
+  # claim the name, and a policy matching plain names would then trust their
+  # workflows. Numeric IDs are never reused, so this form closes that hole.
+  github_subject = format(
+    "repo:%s@%d/%s@%d:ref:refs/heads/%s",
+    local.gh_owner, var.github_owner_id,
+    local.gh_name, var.github_repo_id,
+    var.github_branch,
+  )
+}
+
 data "aws_iam_policy_document" "github_assume_role" {
   statement {
     sid     = "GitHubActionsOIDC"
@@ -51,7 +70,7 @@ data "aws_iam_policy_document" "github_assume_role" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/${var.github_branch}"]
+      values   = [local.github_subject]
     }
   }
 }

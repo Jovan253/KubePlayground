@@ -16,6 +16,18 @@ variable "github_repo" {
   }
 }
 
+variable "github_owner_id" {
+  description = "Numeric GitHub account ID. From https://api.github.com/users/<owner> -> .id"
+  type        = number
+  default     = 54801590
+}
+
+variable "github_repo_id" {
+  description = "Numeric GitHub repository ID. From https://api.github.com/repos/<owner>/<name> -> .id"
+  type        = number
+  default     = 1346312309
+}
+
 variable "github_branch" {
   description = "Branch allowed to assume the deploy role. A separate read-only role for plan-on-PR comes later."
   type        = string

@@ -343,8 +343,34 @@ stands the whole environment up from nothing" is a better story than a cluster i
 Terraform daily but has not used AWS — the unfamiliar part is the resources, not the language, so
 each step below lands separately with an explanation of what it creates and why AWS needs it.
 
-- [ ] **Step 1 — Identity.** GitHub OIDC provider + an IAM role Actions can assume. No long-lived
+- [x] **Step 1 — Identity.** GitHub OIDC provider + an IAM role Actions can assume. No long-lived
       access keys in repo secrets, ever. The single most interview-relevant detail here.
+
+      **Gotcha that cost a debugging round — GitHub issues IMMUTABLE subject claims.** The trust
+      policy was written the way every tutorial shows it:
+
+          repo:Jovan253/KubePlayground:ref:refs/heads/main
+
+      and the token actually said:
+
+          repo:Jovan253@54801590/KubePlayground@1346312309:ref:refs/heads/main
+
+      Every name carries its numeric ID. `StringEquals` is exact, so it never matched, and the
+      error — "Not authorized to perform sts:AssumeRoleWithWebIdentity" — says nothing about why.
+
+      This is a security feature, not a bug. Names are mutable: delete a repo or rename an
+      account, someone else claims the name, and a policy matching plain names would trust THEIR
+      workflows. Numeric IDs are never reused. So the fix is to match the immutable form, never
+      to disable it.
+
+      **The technique worth keeping:** don't guess at claim mismatches. A workflow step can
+      request its own OIDC token and print selected claims — see
+      `.github/workflows/aws-oidc-check.yml`. Print `sub` and nothing sensitive; the token itself
+      is a bearer credential and must never reach a log.
+
+      Ruled out first, in order: provider exists with the right audience, trust policy contents,
+      canonical repo casing (`StringEquals` is case-sensitive and a git remote preserves whatever
+      you typed, not GitHub's canonical name), default branch, and IAM propagation timing.
 - [ ] **Step 2 — Registry.** ECR repository + lifecycle policy. The first point at which the image
       needs a real registry: `imagePullPolicy: IfNotPresent` with a locally-built tag stops
       working the moment the node is not your own laptop.
