@@ -38,3 +38,30 @@ variable "project" {
   type    = string
   default = "kubeplayground"
 }
+
+variable "cluster_version" {
+  description = "EKS Kubernetes minor version. 1.36 matches the local Docker Desktop cluster."
+  type        = string
+  default     = "1.36"
+}
+
+variable "node_instance_type" {
+  description = <<-EOT
+    Node size. t3.small is ~$15/mo on-demand in eu-west-2 and caps out at 11 Pods
+    (the AWS CNI gives every Pod a VPC IP, so max-pods follows ENI limits per
+    instance type, not memory). t3.medium doubles that headroom for ~$30/mo.
+  EOT
+  type        = string
+  default     = "t3.small"
+}
+
+variable "node_capacity_type" {
+  description = "ON_DEMAND or SPOT. SPOT is ~70% cheaper but can be reclaimed mid-demo."
+  type        = string
+  default     = "ON_DEMAND"
+}
+
+variable "node_desired_size" {
+  type    = number
+  default = 1
+}

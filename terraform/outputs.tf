@@ -30,3 +30,16 @@ output "public_subnet_ids" {
   description = "Passed to the EKS cluster and node group in step 4."
   value       = [for s in aws_subnet.public : s.id]
 }
+
+output "cluster_name" {
+  value = aws_eks_cluster.main.name
+}
+
+output "cluster_endpoint" {
+  value = aws_eks_cluster.main.endpoint
+}
+
+output "kubeconfig_command" {
+  description = "Adds the cluster to your kubeconfig. Note the context name it creates."
+  value       = "aws eks update-kubeconfig --region ${var.region} --name ${aws_eks_cluster.main.name}"
+}
