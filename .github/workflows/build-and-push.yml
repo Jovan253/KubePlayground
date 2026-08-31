@@ -3,7 +3,7 @@ name: Build and push
 on:
   push:
     branches: [main]
-    # Don't rebuild the image for a README or roadmap edit.
+    # Rebuild the image if the following file locations change
     paths:
       - backend/**
       - frontend/**
