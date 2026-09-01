@@ -12,5 +12,5 @@ spec:
   ports:
     - port: {{ .Values.service.port }}
       # Named port, resolved against the container's declared containerPort.
-      targetPort: http
+      targetPort: {{ .Values.container.portName }}
       protocol: TCP

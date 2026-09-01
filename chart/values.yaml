@@ -1,4 +1,8 @@
-# Defaults. Override per cluster with -f values-local.yaml or -f values-eks.yaml.
+# Defaults for the kubeplayground chart.
+# Override per cluster: -f values-local.yaml  or  -f values-eks.yaml
+
+# Overrides the name used for resources. Leave empty to use the chart name.
+nameOverride: ""
 
 replicaCount: 1
 
@@ -10,17 +14,29 @@ image:
 serviceAccount:
   name: kubeplayground-sa
 
+container:
+  port: 8000
+  # The Service targets this by NAME, so the number lives in one place.
+  portName: http
+
 service:
   port: 80
 
 ingress:
   enabled: true
   className: nginx
-  # Empty host = match any host. Set one to route by hostname instead.
+  # Empty = the rule omits `host` entirely and matches any hostname.
   host: ""
 
-# Measured from the container's cgroup rather than guessed — see ROADMAP M6.
-# Idle 6m CPU / 81 MiB; ~142m under load.
+deployment:
+  name: kubeplayground-api
+
+# Measured from the container's own cgroup, not guessed — see ROADMAP M6.
+# Idle 6m CPU / 81 MiB; ~142m CPU and ~90 MiB under load.
+#
+# CPU limit is generous because CFS quota is enforced per 100ms window, so a
+# bursty workload gets throttled well below its average allowance. Memory limit
+# is not generous by choice: exceeding it is an OOMKill, not a slowdown.
 resources:
   requests:
     cpu: 120m
@@ -30,10 +46,44 @@ resources:
     memory: 160Mi
 
 probes:
+  # /api/health answers without touching the Kubernetes API, which is what makes
+  # it honest for liveness — it reports whether THIS process is alive, not
+  # whether a dependency is.
   path: /api/health
-  # A generous boot budget via startup, then fast detection afterwards.
+
+  # While the startup probe runs, readiness and liveness are suspended. That is
+  # the whole point: a generous boot budget AND fast failure detection after,
+  # instead of trading one against the other with initialDelaySeconds.
   startup:
+    enabled: true
     initialDelaySeconds: 5
     periodSeconds: 5
     failureThreshold: 3
-  periodSeconds: 5
+
+  # Failing readiness drops the Pod from the Service's EndpointSlice. The Pod
+  # keeps running.
+  readiness:
+    enabled: true
+    periodSeconds: 5
+    failureThreshold: 3
+
+  # Failing liveness kills and restarts the container.
+  liveness:
+    enabled: true
+    periodSeconds: 5
+    failureThreshold: 3
+
+# The image already runs as uid 10001 (see backend/Dockerfile). Setting this
+# makes the CLUSTER enforce it, so the Pod is refused if someone rebuilds the
+# image carelessly as root.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  # Left false: uvicorn and the kubernetes client want somewhere writable.
+  # Flipping it to true and finding what breaks is a good M6 exercise.
+  readOnlyRootFilesystem: false

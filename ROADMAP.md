@@ -367,8 +367,44 @@ kubectl transcript with standing reads separated from timestamped actions.
 - [ ] Structured logs; `/healthz` and `/metrics` endpoints
 - [ ] Concepts: the difference between logs, metrics, traces (KCNA asks)
 
-### ☐ M8 — Delivery & polish
-- [ ] Package as a **Helm chart** (M9's deploy job then uses `helm upgrade --install`)
+### ◐ M8 — Delivery & polish
+- [x] **Packaged as a Helm chart** (`chart/`) — brought forward from its original slot because
+      M9 forced the question: the same manifests must point at `kubeplayground-api:0.8.0`
+      locally and at an ECR path on EKS, and raw YAML can't do both.
+
+      Structure: `Chart.yaml`, `values.yaml` for defaults, `values-local.yaml` and
+      `values-eks.yaml` as per-cluster overrides. CI overrides the tag per deploy with
+      `--set image.tag=$GITHUB_SHA`, so the running image always traces to a commit.
+
+      Things worth remembering from building it:
+      - **Two label helpers, not one.** `selectorLabels` (a stable subset) goes in
+        `spec.selector.matchLabels` and the pod template; the full `labels` set — which carries
+        the chart version — goes only on `metadata`. A Deployment's selector is IMMUTABLE, so a
+        version label inside it makes every `helm upgrade` fail.
+      - **No `metadata.namespace` in any template.** Helm supplies it from `--namespace`.
+        Hardcoding it makes the chart installable in exactly one place.
+      - **ClusterRole/ClusterRoleBinding are cluster-scoped**, so the release namespace does not
+        keep two installs apart. Their names are prefixed with `.Release.Name` instead.
+      - **Helm will not adopt objects `kubectl apply` created.** The existing raw resources have
+        to be deleted before the first `helm install`, or it fails on ownership. That is the
+        practical face of "a release is tracked, an apply is not".
+- [x] Verified 2026-09-01 with helm v4.2.4. `helm lint` clean, `helm template` renders all six,
+      and `helm install` is live on docker-desktop: `/api/health` returns in-cluster,
+      `/api/ingresses` works (proving the chart's ClusterRole is correct), and site-a/site-b still
+      route.
+
+      **`helm lint` is not enough on its own.** It checks chart structure; only `helm template`
+      renders and parses the output, which is what catches indentation errors. `nindent` is the
+      relevant trap: `include` returns a MULTI-LINE string, so without it only the first line
+      lands at the right column. `{{-` strips the preceding whitespace and `nindent N` puts back
+      exactly one newline plus N spaces per line — they are a matched pair.
+
+      `toYaml` only works where the value's shape ALREADY IS the target YAML — which is why it
+      suits `resources` (values mirror the k8s schema exactly) but not `ports`, where values are
+      an abstraction (`container.port`) over a list with different key names.
+- [ ] Delete `k8s/10-serviceaccount.yaml` … `14-ingress.yaml`, now superseded by the chart —
+      they were removed from the CLUSTER to let Helm take ownership, but the files remain. The site-a/site-b manifests and `00-namespaces.yaml` stay as raw YAML — they are
+      demo content, not the app.
 - [ ] README with architecture diagram and screenshots — the portfolio artefact
 
 ### ☐ M9 — Ship it to AWS with GitHub Actions
@@ -412,16 +448,40 @@ each step below lands separately with an explanation of what it creates and why 
       Ruled out first, in order: provider exists with the right audience, trust policy contents,
       canonical repo casing (`StringEquals` is case-sensitive and a git remote preserves whatever
       you typed, not GitHub's canonical name), default branch, and IAM propagation timing.
-- [ ] **Step 2 — Registry.** ECR repository + lifecycle policy. The first point at which the image
+- [x] **Step 2 — Registry.** ECR repository + lifecycle policy. The first point at which the image
       needs a real registry: `imagePullPolicy: IfNotPresent` with a locally-built tag stops
       working the moment the node is not your own laptop.
-- [ ] **Step 3 — Network.** VPC, subnets, routing. Why EKS wants multiple AZs; why a NAT gateway
+- [x] **Step 3 — Network.** VPC, subnets, routing. Why EKS wants multiple AZs; why a NAT gateway
       costs real money, and how keeping nodes in public subnets avoids it.
-- [ ] **Step 4 — Cluster.** EKS control plane + a small managed node group. What AWS runs for you,
+- [x] **Step 4 — Cluster.** EKS control plane + a small managed node group. What AWS runs for you,
       and what is still yours to run.
-- [ ] **Step 5 — Access.** EKS access entries — how an AWS IAM identity becomes a Kubernetes RBAC
-      subject. **The concept to actually understand:** authentication is AWS's job, authorisation
-      is still Kubernetes RBAC. Two systems, joined at exactly one seam.
+- [x] **Step 5 — Access.** Two separate permission systems, and you need BOTH:
+      - `eks:DescribeCluster` in **AWS IAM** — what `aws eks update-kubeconfig` calls to fetch the
+        endpoint and CA. Grant only this and you still cannot touch a single Kubernetes object.
+      - an **access entry** + policy association — registers the IAM role as a principal the
+        cluster recognises, then binds it to permissions. The entry alone grants nothing, exactly
+        like a ServiceAccount with no RoleBinding.
+
+      Authentication is AWS's job, authorisation stays Kubernetes'. A 403 from kubectl on EKS
+      means asking which of the two refused you.
+
+      **Least-privilege debt, deliberately taken.** The association grants
+      `AmazonEKSClusterAdminPolicy`. The reason is Kubernetes' **escalation prevention**: you
+      cannot create a role granting permissions you do not already hold, and the chart creates a
+      ClusterRole — so a namespace-scoped CI identity physically cannot install it.
+      The fix when it matters: `rbac.create: false` in values, a human admin provisions the
+      ClusterRole/Binding once, CI drops to `AmazonEKSAdminPolicy` scoped to the namespace.
+      Cluster-scoped by admin, namespaced by CI, is the normal production split.
+
+- [x] **Chart deployed to EKS manually, 2026-09-01** — proving the chain before automating it.
+      `mode: in-cluster`, `/api/nodes` returns 1 (so the chart's RBAC works), and `self.nodeName`
+      is populated (downward API). The node pulled from ECR in 3.9s using
+      `AmazonEC2ContainerRegistryReadOnly` on its **instance role** — no imagePullSecret and no
+      Kubernetes ServiceAccount involved in the pull at all.
+
+      Also worth noting: `aws eks update-kubeconfig` makes EKS the CURRENT context, which is
+      precisely the hazard CLAUDE.md warns about. Renamed to `eks-kubeplayground` and switched
+      back to `docker-desktop` so an unqualified command hits the sandbox, not AWS.
 - [ ] **Workflows — Jovan writes these.** `terraform plan` on PR and `apply` on merge; build and
       push to ECR; deploy; smoke-test `/api/health`; a manually-triggered `destroy`.
 - [ ] Concepts to be able to explain afterwards: OIDC federation vs static keys, why an image tag
@@ -536,3 +596,14 @@ Newest last. One line per working session — what moved.
   *as stored*. Both read-only, so no RBAC change, and safe to expose publicly later.
   **Not yet verified against a live cluster** — there isn't one until Docker Desktop's Kubernetes
   is enabled. Next: enable it, re-apply `k8s/` in dependency order, test M5b, then M6.
+- **2026-09-01** — **Helm chart built and installed; M9 through step 4.** Terraform now stands up
+  GitHub OIDC identity, ECR, a VPC and an EKS cluster, applied in that order with each step
+  explained. OIDC federation verified end to end — Actions builds and pushes to ECR with no
+  stored AWS credential. Packaging moved from raw manifests to a Helm chart, brought forward from
+  M8 because EKS forced it: the same manifests must name a local tag and an ECR path.
+  Lessons banked: an IAM role carries TWO policies doing unrelated jobs (trust = who may become
+  me, permissions = what I can do once assumed), AWS has no resource-group equivalent so tags are
+  the only grouping and `terraform destroy` is the only deletion boundary, and ECR has one
+  implicit registry per account+region rather than a named one like ACR.
+  Next: M9 step 5 (EKS access entries — mapping an AWS identity to a Kubernetes RBAC subject),
+  then deploying the chart to EKS from CI.

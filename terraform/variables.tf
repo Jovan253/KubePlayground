@@ -65,3 +65,19 @@ variable "node_desired_size" {
   type    = number
   default = 1
 }
+
+variable "console_admin_principal_arn" {
+  description = <<-EOT
+    Optional extra IAM principal granted cluster admin, for browsing the cluster
+    in the EKS console.
+
+    The console's Resources tab queries the KUBERNETES API as you, so IAM alone
+    is not enough — the principal needs an access entry. Note the account ROOT
+    user cannot be used here; AWS does not accept it as an access-entry
+    principal. Use an IAM user or role.
+
+    Find yours with: aws sts get-caller-identity
+  EOT
+  type        = string
+  default     = ""
+}
