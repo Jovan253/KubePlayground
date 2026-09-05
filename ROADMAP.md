@@ -593,6 +593,34 @@ sites, a kustomize overlay, or accept two sets of manifests. Decide before writi
 answering, and KubePlayground's own tree showing three namespaces each with a working link chip —
 which is the screenshot worth putting in the README.
 
+### ☐ M12 — The demo GIF
+*The README's most important asset. Nobody clones a repo; the image is what they judge.*
+
+**Record on EKS, not locally.** Identical UI, but the header reads `v1.36-eks`, the image path is
+an ECR URL and `aws-node` appears in the tree — visible evidence it is really on AWS. Costs ~15
+minutes of cluster time.
+
+**Tool:** ScreenToGif (`winget install NickeManarin.ScreenToGif`) — records a screen region
+straight to GIF and lets you delete frames afterwards.
+
+**The shot list, roughly 15 seconds. Three moments, not a tour:**
+
+1. Set the namespace filter to `kubeplayground` FIRST. The default all-namespaces view leads with
+   `coredns` and makes the app look like a generic cluster viewer — the exact impression the
+   README is trying to avoid.
+2. Press scale `+` twice. Pods appear live in the tree — the "this is a real cluster" moment.
+3. Open the transcript bar so `kubectl scale deployment/... --replicas=3` is on screen. This is
+   the differentiator from every other dashboard.
+4. Click the Deployment → YAML tab → toggle `spec` / `spec + status`, holding on the
+   stripped-fields panel for a beat.
+
+**Size:** crop to the browser content area, 10-12 fps, under ~10 MB or GitHub gets slow. If it
+will not fit, GitHub also accepts `.mp4` — drag the file into any issue comment box and use the
+URL it generates.
+
+- [ ] Record it
+- [ ] Save to `docs/demo.gif` and uncomment the image line at the top of `README.md`
+
 ## KCNA coverage tracker
 
 Exam domains and weights — **verify against the current CNCF curriculum**, they do get revised:
