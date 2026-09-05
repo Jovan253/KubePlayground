@@ -76,10 +76,24 @@ jobs:
       - name: Setup helm
         uses: azure/setup-helm@v4
 
+      # The cluster is normally torn down to save money, so a missing cluster is
+      # the expected case, not a failure. Skip the deploy rather than go red.
+      - name: Is there a cluster?
+        id: cluster
+        run: |
+          if aws eks describe-cluster --region "$AWS_REGION" --name "$CLUSTER_NAME" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No cluster up — image pushed, deploy skipped. Run **Cluster up** to deploy it." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Update EKS config
+        if: steps.cluster.outputs.exists == 'true'
         run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.CLUSTER_NAME }}
 
       - name: Helm Upgrade
+        if: steps.cluster.outputs.exists == 'true'
         run: |
           helm upgrade --install kubeplayground ./chart \
             -n kubeplayground --create-namespace \

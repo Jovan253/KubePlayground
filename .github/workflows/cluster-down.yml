@@ -1,0 +1,133 @@
+# Takes the billable environment down.
+#
+# ORDER MATTERS. The load balancer was created by Kubernetes in response to the
+# ingress controller's Service — it belongs to the Helm release, not Terraform.
+# Destroy the cluster first and the load balancer is stranded: still billing,
+# and invisible to `terraform destroy` because it was never in state.
+#
+# So: uninstall the releases, let AWS reap the load balancer, then remove the
+# cluster. The last job checks nothing was left behind.
+
+name: Cluster down
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-west-2
+  CLUSTER_NAME: kubeplayground
+  TF_ROLE: arn:aws:iam::436535003124:role/kubeplayground-github-terraform
+  DEPLOY_ROLE: arn:aws:iam::436535003124:role/kubeplayground-github-actions
+
+jobs:
+  # ---------------------------------------------------------------------------
+  uninstall:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-cluster-down
+
+      - uses: azure/setup-helm@v4
+
+      # If the cluster is already gone this is a no-op rather than a failure —
+      # the workflow should be safe to run twice.
+      - name: Kubeconfig
+        id: kubeconfig
+        continue-on-error: true
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+
+      - name: Uninstall releases
+        if: steps.kubeconfig.outcome == 'success'
+        run: |
+          helm uninstall sites --ignore-not-found
+          helm uninstall kubeplayground -n kubeplayground --ignore-not-found
+          # Last, and the important one: this is what releases the load balancer.
+          helm uninstall ingress-nginx -n ingress-nginx --ignore-not-found
+
+      # Deletion is asynchronous. Give AWS time to actually reap it before
+      # Terraform pulls the cluster out from under the controller.
+      - name: Wait for the load balancer to go
+        if: steps.kubeconfig.outcome == 'success'
+        run: |
+          for i in $(seq 1 30); do
+            COUNT=$(aws elbv2 describe-load-balancers --region "$AWS_REGION" \
+              --query 'length(LoadBalancers)' --output text)
+            LEGACY=$(aws elb describe-load-balancers --region "$AWS_REGION" \
+              --query 'length(LoadBalancerDescriptions)' --output text)
+            echo "elbv2=$COUNT classic=$LEGACY"
+            if [ "$COUNT" = "0" ] && [ "$LEGACY" = "0" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "::warning::Load balancers still present — check for orphans after destroy."
+
+  # ---------------------------------------------------------------------------
+  destroy-cluster:
+    needs: uninstall
+    runs-on: ubuntu-latest
+    environment: infra
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.TF_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-cluster-down
+
+      - run: terraform init
+
+      # Not `terraform destroy` — that would take the free tier and the state
+      # bucket with it. Flipping the variable removes only the billable pieces
+      # and leaves a complete, honest plan behind.
+      - name: Remove the cluster
+        run: terraform apply -auto-approve -input=false -var=create_cluster=false
+
+  # ---------------------------------------------------------------------------
+  verify:
+    needs: destroy-cluster
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-verify-down
+
+      - name: Nothing left billing
+        run: |
+          LBS=$(aws elbv2 describe-load-balancers --region "$AWS_REGION" \
+            --query 'LoadBalancers[].DNSName' --output json)
+          CLASSIC=$(aws elb describe-load-balancers --region "$AWS_REGION" \
+            --query 'LoadBalancerDescriptions[].DNSName' --output json)
+          CLUSTERS=$(aws eks list-clusters --region "$AWS_REGION" \
+            --query 'clusters' --output json)
+
+          {
+            echo "## Teardown check"
+            echo ""
+            echo "- EKS clusters: \`$CLUSTERS\`"
+            echo "- Load balancers: \`$LBS\`"
+            echo "- Classic load balancers: \`$CLASSIC\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$CLUSTERS" != "[]" ] || [ "$LBS" != "[]" ] || [ "$CLASSIC" != "[]" ]; then
+            echo "::error::Billable resources remain."
+            exit 1
+          fi

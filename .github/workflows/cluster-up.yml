@@ -1,0 +1,125 @@
+# Raises the billable environment and deploys everything onto it.
+# ~$0.14/hr while it exists. Take it down with cluster-down.yml.
+#
+# Two jobs, two roles, on purpose: the terraform role is effectively admin and
+# is gated behind the `infra` environment; the deploy role can only push images
+# and talk to the cluster. Neither can do the other's work.
+
+name: Cluster up
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (defaults to this commit's SHA — it must already exist in ECR)"
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-west-2
+  CLUSTER_NAME: kubeplayground
+  TF_ROLE: arn:aws:iam::436535003124:role/kubeplayground-github-terraform
+  DEPLOY_ROLE: arn:aws:iam::436535003124:role/kubeplayground-github-actions
+
+jobs:
+  # ---------------------------------------------------------------------------
+  create-cluster:
+    runs-on: ubuntu-latest
+    environment: infra
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.TF_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-cluster-up
+
+      - run: terraform init
+
+      # ~10-15 minutes, most of it the control plane. Not hung.
+      - name: Create EKS
+        run: terraform apply -auto-approve -input=false -var=create_cluster=true
+
+  # ---------------------------------------------------------------------------
+  deploy:
+    needs: create-cluster
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy
+
+      - uses: azure/setup-helm@v4
+
+      - name: Kubeconfig
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+
+      # Owns the one load balancer everything else routes through. Installed
+      # per cluster, not per deploy — `upgrade --install` keeps this idempotent.
+      - name: Ingress controller
+        run: |
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo update
+          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+            -n ingress-nginx --create-namespace --wait --timeout 10m
+
+      - name: Deploy app
+        env:
+          TAG: ${{ inputs.image_tag || github.sha }}
+        run: |
+          helm upgrade --install kubeplayground ./chart \
+            -n kubeplayground --create-namespace \
+            -f chart/values-eks.yaml \
+            --set image.tag="$TAG" \
+            --wait --atomic
+
+      - name: Deploy demo sites
+        run: |
+          helm upgrade --install sites ./chart/sites \
+            -f chart/sites/values-eks.yaml \
+            --wait --atomic
+
+      # A hostname existing is not the same as it answering — the load
+      # balancer's health checks take a minute or so after it is assigned.
+      - name: Publish the URL
+        run: |
+          kubectl -n ingress-nginx wait --for=jsonpath='{.status.loadBalancer.ingress}' \
+            svc/ingress-nginx-controller --timeout=300s
+
+          HOST=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null --max-time 5 "http://$HOST/api/health"; then break; fi
+            sleep 10
+          done
+
+          {
+            echo "## Live"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| App | http://$HOST/ |"
+            echo "| Site A | http://$HOST/site-a |"
+            echo "| Site B | http://$HOST/site-b |"
+            echo ""
+            echo "Costing ~\$0.14/hr. Run **Cluster down** when finished."
+          } >> "$GITHUB_STEP_SUMMARY"

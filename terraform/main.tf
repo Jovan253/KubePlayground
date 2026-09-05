@@ -8,6 +8,14 @@
 terraform {
   required_version = ">= 1.5"
 
+  backend "s3" {
+    bucket       = "kubeplayground-tfstate-436535003124"
+    key          = "kubeplayground/terraform.tfstate"
+    region       = "eu-west-2"
+    encrypt      = true
+    use_lockfile = true
+  }
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"

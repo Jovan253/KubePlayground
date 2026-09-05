@@ -1,0 +1,71 @@
+# Terraform for the always-on, free resources: OIDC provider, IAM roles, ECR,
+# VPC, state bucket. `create_cluster` defaults to false, so this never creates
+# the billable EKS cluster — cluster-up.yml does that deliberately.
+
+name: Infrastructure
+
+on:
+  pull_request:
+    paths: [terraform/**]
+  push:
+    branches: [main]
+    paths: [terraform/**]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write # to post the plan on the PR
+
+env:
+  AWS_REGION: eu-west-2
+  TF_ROLE: arn:aws:iam::436535003124:role/kubeplayground-github-terraform
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    # Required: the terraform role's trust policy only accepts a token whose
+    # `sub` is `...:environment:infra`. Declaring it here is what makes GitHub
+    # mint that claim. Add required reviewers on the environment and every
+    # infrastructure change gains a human gate.
+    environment: infra
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.TF_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-terraform
+
+      - run: terraform init
+
+      # Cheap checks first — a formatting or validation failure should not wait
+      # on a plan that talks to AWS.
+      - run: terraform fmt -check -recursive
+      - run: terraform validate
+
+      - name: Plan
+        id: plan
+        run: |
+          terraform plan -no-color -input=false | tee plan.txt
+          {
+            echo '### Terraform plan'
+            echo '```'
+            tail -c 60000 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only on merge, never on a pull request.
+      - name: Apply
+        if: github.event_name == 'push'
+        run: terraform apply -auto-approve -input=false
