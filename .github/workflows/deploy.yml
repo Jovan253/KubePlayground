@@ -1,0 +1,137 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - backend/**
+      - frontend/**
+      - chart/**
+      - .github/workflows/deploy.yml
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-west-2
+  CLUSTER_NAME: kubeplayground
+  ECR_REPO: kubeplayground
+  ROLE_ARN: arn:aws:iam::436535003124:role/kubeplayground-github-actions
+
+jobs:
+  # ---------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-build
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # The repository is IMMUTABLE, so pushing a tag that already exists fails.
+      # That is correct behaviour — but it means re-running this workflow on an
+      # unchanged commit would break. Check first and skip instead.
+      - name: Already built?
+        id: exists
+        run: |
+          if aws ecr describe-images --repository-name "$ECR_REPO" \
+               --region "$AWS_REGION" --image-ids imageTag="$GITHUB_SHA" >/dev/null 2>&1; then
+            echo "built=true" >> "$GITHUB_OUTPUT"
+            echo "Image for \`$GITHUB_SHA\` already in ECR — skipping build." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "built=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        if: steps.exists.outputs.built == 'false'
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO }}:${{ github.sha }}
+        run: |
+          docker build -f backend/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "Pushed \`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy
+
+      - uses: azure/setup-helm@v4
+
+      # The cluster is normally torn down to save money, so its absence is the
+      # expected case rather than a failure. The image is still in ECR waiting.
+      - name: Is there a cluster?
+        id: cluster
+        run: |
+          if aws eks describe-cluster --region "$AWS_REGION" --name "$CLUSTER_NAME" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No cluster up — image is in ECR, deploy skipped. Run **Cluster up** to raise one." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Kubeconfig
+        if: steps.cluster.outputs.exists == 'true'
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+
+      - name: App
+        if: steps.cluster.outputs.exists == 'true'
+        run: |
+          helm upgrade --install kubeplayground ./chart \
+            -n kubeplayground --create-namespace \
+            -f chart/values-eks.yaml \
+            --set image.tag="$GITHUB_SHA" \
+            --wait --atomic
+
+      - name: Demo sites
+        if: steps.cluster.outputs.exists == 'true'
+        run: |
+          helm upgrade --install sites ./chart/sites \
+            -f chart/sites/values-eks.yaml \
+            --wait --atomic
+
+      # A hostname existing is not the same as it answering — the load
+      # balancer's health checks take a minute or so after assignment.
+      - name: Publish the URLs
+        if: steps.cluster.outputs.exists == 'true'
+        run: |
+          kubectl -n ingress-nginx wait --for=jsonpath='{.status.loadBalancer.ingress}' \
+            svc/ingress-nginx-controller --timeout=300s
+
+          HOST=$(kubectl -n ingress-nginx get svc ingress-nginx-controller \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null --max-time 5 "http://$HOST/api/health"; then break; fi
+            sleep 10
+          done
+
+          {
+            echo "## Live"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| App | http://$HOST/ |"
+            echo "| Site A | http://$HOST/site-a |"
+            echo "| Site B | http://$HOST/site-b |"
+            echo ""
+            echo "Image tag \`$GITHUB_SHA\`. Costing ~\$0.14/hr — run **Cluster down** when finished."
+          } >> "$GITHUB_STEP_SUMMARY"
