@@ -2,5 +2,5 @@
 # it to the node, so no registry path is needed.
 image:
   repository: kubeplayground-api
-  tag: "0.8.0"
+  tag: "0.9.0"
   pullPolicy: IfNotPresent

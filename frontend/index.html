@@ -644,10 +644,22 @@ function buildUrlIndex(deploys, services, ingresses) {
   for (const ing of ingresses) {
     for (const rule of ing.rules) {
       for (const p of rule.paths) {
-        // No host on the rule means it matches any host, so localhost will do.
-        const host = rule.host || 'localhost';
-        const path = p.path && p.path !== '/' ? p.path : '';
-        serviceUrl.set(key(ing.namespace, 'Service', p.serviceName), `http://${host}${path}/`);
+        // A rule with no `host` matches ANY host — including whichever one this
+        // page is being served from, which is the only one we know is
+        // reachable. Hardcoding localhost was wrong the moment this ran behind
+        // a load balancer.
+        const host = rule.host || location.host;
+
+        // pathType: ImplementationSpecific allows regexes, and nginx path
+        // routing writes them: /site-a(/|$)(.*). Keep the literal prefix and
+        // drop the pattern, or the link is a 404 full of escaped punctuation.
+        const raw = p.path || '/';
+        const literal = raw.split(/[(*?[\\^$|+]/)[0].replace(/\/+$/, '');
+
+        serviceUrl.set(
+          key(ing.namespace, 'Service', p.serviceName),
+          `${location.protocol}//${host}${literal || '/'}`,
+        );
       }
     }
   }

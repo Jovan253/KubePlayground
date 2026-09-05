@@ -43,24 +43,24 @@ resource "aws_eks_access_policy_association" "github_actions" {
 
 # Optional: a human identity for browsing the cluster in the console.
 # count = 0 when the variable is empty, so this is opt-in.
-resource "aws_eks_access_entry" "console_admin" {
-  count = var.create_cluster && var.console_admin_principal_arn != "" ? 1 : 0
+resource "aws_eks_access_entry" "human_admin" {
+  count = var.create_cluster && var.human_admin_principal_arn != "" ? 1 : 0
 
   cluster_name  = aws_eks_cluster.main[0].name
-  principal_arn = var.console_admin_principal_arn
+  principal_arn = var.human_admin_principal_arn
   type          = "STANDARD"
 }
 
-resource "aws_eks_access_policy_association" "console_admin" {
-  count = var.create_cluster && var.console_admin_principal_arn != "" ? 1 : 0
+resource "aws_eks_access_policy_association" "human_admin" {
+  count = var.create_cluster && var.human_admin_principal_arn != "" ? 1 : 0
 
   cluster_name  = aws_eks_cluster.main[0].name
-  principal_arn = var.console_admin_principal_arn
+  principal_arn = var.human_admin_principal_arn
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 
   access_scope {
     type = "cluster"
   }
 
-  depends_on = [aws_eks_access_entry.console_admin]
+  depends_on = [aws_eks_access_entry.human_admin]
 }

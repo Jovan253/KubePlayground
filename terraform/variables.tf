@@ -90,18 +90,23 @@ variable "node_desired_size" {
   default = 1
 }
 
-variable "console_admin_principal_arn" {
+variable "human_admin_principal_arn" {
   description = <<-EOT
-    Optional extra IAM principal granted cluster admin, for browsing the cluster
-    in the EKS console.
+    An IAM principal given cluster admin explicitly, so a human keeps access
+    regardless of who created the cluster.
 
-    The console's Resources tab queries the KUBERNETES API as you, so IAM alone
-    is not enough — the principal needs an access entry. Note the account ROOT
-    user cannot be used here; AWS does not accept it as an access-entry
-    principal. Use an IAM user or role.
+    Without this, access depends on `bootstrap_cluster_creator_admin_permissions`,
+    which grants admin to WHOEVER RAN THE APPLY. When cluster-up.yml creates the
+    cluster, that is the CI terraform role — and you are locked out of your own
+    cluster from your laptop until you recreate it yourself. Accidental access is
+    not access.
 
-    Find yours with: aws sts get-caller-identity
+    Also what the EKS console's Resources tab needs: it queries the KUBERNETES
+    API as you, so IAM permissions alone are not enough.
+
+    The account ROOT user cannot be used — AWS does not accept it as an
+    access-entry principal. Find yours with: aws sts get-caller-identity
   EOT
   type        = string
-  default     = ""
+  default     = "arn:aws:iam::436535003124:user/terraform-boot"
 }
