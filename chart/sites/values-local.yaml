@@ -1,0 +1,3 @@
+# Docker Desktop: host-based, matching what the raw manifests did.
+routing: host
+domainSuffix: .localhost

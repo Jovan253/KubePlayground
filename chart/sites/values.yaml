@@ -1,0 +1,41 @@
+# Demo sites. Adding site-c is three lines under `sites:` — no new files.
+
+# How the sites are reached. This is the only thing that differs per cluster.
+#
+#   host — site-a.localhost. Browsers resolve *.localhost to 127.0.0.1 with no
+#          hosts-file edit, and it needs no path rewriting. Local only: a
+#          .localhost name means nothing on the internet.
+#   path — /site-a on whatever hostname the load balancer got. Works anywhere,
+#          but nginx forwards the FULL path, so the backend would receive
+#          /site-a/index.html and 404. Hence the rewrite in the template.
+routing: host
+
+# Only used when routing = host.
+domainSuffix: .localhost
+
+ingress:
+  className: nginx
+
+image:
+  repository: nginx
+  tag: "1.27-alpine"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# Tiny: this is nginx serving one static file from a ConfigMap.
+resources:
+  requests:
+    cpu: 10m
+    memory: 16Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi
+
+sites:
+  - name: site-a
+    title: Site A
+    body: Welcome to Site A!
+  - name: site-b
+    title: Site B
+    body: Welcome to Site B!

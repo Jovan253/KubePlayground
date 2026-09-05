@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sites
+description: Demo websites behind the same ingress controller as KubePlayground.
+type: application
+version: 0.1.0
+appVersion: "1.0"

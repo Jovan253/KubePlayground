@@ -1,0 +1,6 @@
+# EKS: path-based on the ingress controller's load balancer hostname.
+#
+# Host-based would need real DNS, and the load balancer hostname is not known
+# until it is created — so nothing could hardcode it. Path routing sidesteps
+# that entirely: no rule names a host, so no manifest cares what the URL is.
+routing: path

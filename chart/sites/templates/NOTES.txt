@@ -1,0 +1,24 @@
+{{ .Chart.Name }} installed {{ len .Values.sites }} site(s), routing: {{ .Values.routing }}
+
+{{ if eq .Values.routing "host" -}}
+Reach them at:
+{{ range .Values.sites }}
+  http://{{ .name }}{{ $.Values.domainSuffix }}/
+{{- end }}
+
+Browsers resolve *.localhost to 127.0.0.1 with no hosts-file entry.
+{{- else -}}
+Routing is path-based, so the URLs hang off whichever hostname the ingress
+controller's load balancer was given:
+
+  kubectl -n ingress-nginx get svc ingress-nginx-controller \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+
+Then:
+{{ range .Values.sites }}
+  http://<that-hostname>/{{ .name }}
+{{- end }}
+
+A hostname existing is not the same as it answering — the load balancer's
+health checks take a minute or so to pass.
+{{- end }}

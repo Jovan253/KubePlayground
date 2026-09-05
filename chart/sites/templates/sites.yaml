@@ -1,0 +1,147 @@
+{{/*
+One template, N sites. `range` rebinds the dot, so the root context is captured
+as $root first — inside the loop, .Values would not resolve.
+
+Note this chart DOES set metadata.namespace, unlike the kubeplayground chart.
+A Helm release's tracking data lives in one namespace, but its resources can go
+anywhere the templates say. Single-namespace charts should omit it and let
+--namespace decide; this one spans namespaces, so it must be explicit.
+*/}}
+{{- $root := . -}}
+{{- range $site := .Values.sites }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $site.name }}
+  labels:
+    app.kubernetes.io/part-of: kubeplayground
+    app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $site.name }}-config
+  namespace: {{ $site.name }}
+  labels:
+    app: {{ $site.name }}
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="en">
+      <head><meta charset="utf-8"><title>{{ $site.title }}</title></head>
+      <body>
+        <h1>{{ $site.body }}</h1>
+        <p>Served by nginx from a ConfigMap, in namespace <code>{{ $site.name }}</code>.</p>
+      </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $site.name }}
+  namespace: {{ $site.name }}
+  labels:
+    app: {{ $site.name }}
+spec:
+  replicas: {{ $root.Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ $site.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $site.name }}
+      annotations:
+        # Mounted ConfigMap volumes update live, but nginx only reads index.html
+        # per request, so no restart is needed for content changes. This
+        # checksum forces a rollout anyway when the page changes, so the
+        # ownership tree shows a real rolling update.
+        checksum/config: {{ toYaml $site | sha256sum }}
+    spec:
+      containers:
+        - name: nginx
+          image: "{{ $root.Values.image.repository }}:{{ $root.Values.image.tag }}"
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          ports:
+            - containerPort: 80
+              name: http
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml $root.Values.resources | nindent 12 }}
+      volumes:
+        - name: html
+          configMap:
+            name: {{ $site.name }}-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $site.name }}
+  namespace: {{ $site.name }}
+  labels:
+    app: {{ $site.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $site.name }}
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $site.name }}
+  # An Ingress can only name a Service in its OWN namespace, which is why this
+  # is one Ingress per site rather than one with several rules.
+  namespace: {{ $site.name }}
+  labels:
+    app: {{ $site.name }}
+  {{- if eq $root.Values.routing "path" }}
+  annotations:
+    # nginx forwards the full path, so the backend would get
+    # /site-a/index.html and 404. $2 is the second capture group below.
+    #
+    # This is an nginx-specific ANNOTATION rather than a spec field because
+    # regex paths are not part of the Ingress API — which is the portability
+    # cost of path-based routing.
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  {{- end }}
+spec:
+  ingressClassName: {{ $root.Values.ingress.className }}
+  rules:
+    {{- if eq $root.Values.routing "host" }}
+    - host: {{ printf "%s%s" $site.name $root.Values.domainSuffix | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $site.name }}
+                port:
+                  number: 80
+    {{- else }}
+    # No host: matches any hostname, so nothing needs to know the load
+    # balancer's address. pathType must leave Prefix — regex paths are
+    # ImplementationSpecific by definition.
+    - http:
+        paths:
+          - path: /{{ $site.name }}(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ $site.name }}
+                port:
+                  number: 80
+    {{- end }}
+{{- end }}
