@@ -31,15 +31,20 @@ output "public_subnet_ids" {
   value       = [for s in aws_subnet.public : s.id]
 }
 
+# `one()` returns the single element of a list, or null when it is empty —
+# which is exactly what a count of 0 or 1 produces. Cleaner than [0], which
+# errors when the cluster does not exist.
 output "cluster_name" {
-  value = aws_eks_cluster.main.name
+  value = one(aws_eks_cluster.main[*].name)
 }
 
 output "cluster_endpoint" {
-  value = aws_eks_cluster.main.endpoint
+  value = one(aws_eks_cluster.main[*].endpoint)
 }
 
 output "kubeconfig_command" {
   description = "Adds the cluster to your kubeconfig. Note the context name it creates."
-  value       = "aws eks update-kubeconfig --region ${var.region} --name ${aws_eks_cluster.main.name}"
+  value = var.create_cluster ? (
+    "aws eks update-kubeconfig --region ${var.region} --name ${one(aws_eks_cluster.main[*].name)}"
+  ) : "no cluster — apply with -var=create_cluster=true"
 }

@@ -12,4 +12,10 @@ image:
 # No ingress controller is installed on the EKS cluster yet, so nothing would
 # act on an Ingress. Reach the app with port-forward until one exists.
 ingress:
-  enabled: false
+  enabled: true
+
+# No ingress controller on this cluster, so the Service itself is the entry
+# point. AWS provisions a real load balancer with a public hostname — roughly
+# $16-20/month on top of the cluster, and it goes away with `helm uninstall`.
+service:
+  type: ClusterIP

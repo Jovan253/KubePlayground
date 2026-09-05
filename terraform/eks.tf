@@ -32,6 +32,9 @@ resource "aws_iam_role_policy_attachment" "cluster" {
 
 ### - EKS Cluster
 resource "aws_eks_cluster" "main" {
+  # The billing switch. See variables.tf.
+  count = var.create_cluster ? 1 : 0
+
   name     = var.project
   version  = var.cluster_version
   role_arn = aws_iam_role.cluster.arn
@@ -87,7 +90,9 @@ resource "aws_iam_role_policy_attachment" "node" {
 
 # - Node
 resource "aws_eks_node_group" "main" {
-  cluster_name    = aws_eks_cluster.main.name
+  count = var.create_cluster ? 1 : 0
+
+  cluster_name    = aws_eks_cluster.main[0].name
   node_group_name = "${var.project}-nodes"
   node_role_arn   = aws_iam_role.node.arn
   subnet_ids      = [for s in aws_subnet.public : s.id]

@@ -20,6 +20,10 @@ container:
   portName: http
 
 service:
+  # ClusterIP is unreachable from outside the cluster — use port-forward, or an
+  # Ingress. LoadBalancer makes AWS provision a real load balancer with a public
+  # hostname, which costs roughly $16-20/month on top of the cluster.
+  type: ClusterIP
   port: 80
 
 ingress:

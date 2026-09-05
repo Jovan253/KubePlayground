@@ -407,7 +407,7 @@ kubectl transcript with standing reads separated from timestamped actions.
       demo content, not the app.
 - [ ] README with architecture diagram and screenshots — the portfolio artefact
 
-### ☐ M9 — Ship it to AWS with GitHub Actions
+### ◐ M9 — Ship it to AWS with GitHub Actions
 *Added 2026-08-30. Deliberately AWS + GitHub rather than Azure + GitLab: those are already
 day-job skills, and the gap is the thing worth closing.*
 
@@ -490,6 +490,32 @@ each step below lands separately with an explanation of what it creates and why 
 
 ---
 
+**Publicly reachable on EKS, 2026-09-01.**
+
+    http://acb65667842514b81b5475a4855dc533-1537010094.eu-west-2.elb.amazonaws.com/
+
+Reached via `service.type: LoadBalancer` rather than an Ingress — the EKS cluster has no ingress
+controller, and a LoadBalancer Service needs none: AWS provisions a load balancer directly from
+the Service. ~$16-20/month on top of the cluster, and it is deleted by `helm uninstall`.
+
+The UI confirms the whole chain from inside AWS: `v1.36.2-eks-bca9cf6`, "you are here" on
+`ip-10-0-12-219.eu-west-2.compute.internal`, image pulled from ECR by digest-tagged commit SHA.
+It also shows workloads that never existed locally — `aws-node` (the VPC CNI) and `kube-proxy`
+as DaemonSets.
+
+Took ~75s after the hostname appeared before it served traffic: the load balancer's health checks
+have to pass first. An `EXTERNAL-IP` that exists is not the same as an endpoint that answers.
+
+Still open on M9:
+- [ ] The pipeline's deploy job has not run yet end to end — the chart was upgraded by hand.
+- [ ] **The scale buttons are live to anyone with the URL.** A read-only values file for the
+      public deployment is the minimum before sharing it; M10 is the fuller answer.
+- [ ] No HTTPS. A LoadBalancer Service gives plain HTTP on an AWS hostname; certificates need the
+      AWS Load Balancer Controller and ACM, which is meaningfully more setup.
+- [ ] `terraform destroy` targeting the node group and cluster when not demoing. Note the load
+      balancer belongs to the Helm release, not Terraform, so `helm uninstall` removes it —
+      destroying only the cluster can strand it.
+
 ### ☐ M10 — A safe workload catalogue (the "playground" half)
 *Added 2026-08-30. Answers "can the site create Deployments once it's on AWS?" — yes, but never
 as a raw `create Deployment` endpoint.*
@@ -520,6 +546,52 @@ deploy it.
 
 Four objects the project hasn't touched yet — ResourceQuota, LimitRange, CronJob, and a
 namespaced Role — so it holds to the original rule that every feature drags curriculum with it.
+
+### ☐ M11 — One ingress controller, three sites, on EKS
+*Decided 2026-09-01 after comparing the options. Gets site-a and site-b onto EKS and demonstrates
+the thing an ingress controller actually exists for: N sites sharing ONE load balancer.*
+
+**Why not the alternatives.** Giving each site its own `LoadBalancer` Service means three load
+balancers at ~$17/mo each — roughly $50/mo to demonstrate worse architecture. A real domain
+(Route 53 + host-based routing) reads better but points at a cluster that is destroyed between
+demos, so a dead link most of the time. The AWS Load Balancer Controller with an ALB is the
+strongest AWS story but needs IRSA, which deserves its own milestone rather than being smuggled
+into a routing change.
+
+Path-based routing on one nginx controller costs the same as today, drops nothing, and screenshots
+exactly as well as pretty hostnames would.
+
+- [ ] Install **ingress-nginx** on EKS (cloud provider variant). Its controller Service is
+      `type: LoadBalancer`, so this creates the one and only load balancer.
+- [ ] Revert `kubeplayground-api` to **`service.type: ClusterIP`** in `values-eks.yaml` and set
+      `ingress.enabled: true`. Net load balancers: still one. It now sits behind the Ingress like
+      everything else rather than being special.
+- [ ] Route by path on the controller's hostname:
+      `/` → kubeplayground · `/site-a` → site-a · `/site-b` → site-b
+- [ ] The rewrite. nginx forwards the FULL path, so site-a receives `/site-a/index.html` and 404s.
+      Needs a capture-group path and `nginx.ingress.kubernetes.io/rewrite-target`:
+
+          path: /site-a(/|$)(.*)
+          pathType: ImplementationSpecific
+          annotations:
+            nginx.ingress.kubernetes.io/rewrite-target: /$2
+
+      Note `pathType` changes from `Prefix` to `ImplementationSpecific` — regex paths are not part
+      of the Ingress spec, they are an nginx extension, which is exactly why `rewrite-target` is a
+      controller-specific annotation and not a spec field. Portability cost, worth knowing.
+- [ ] Confirm precedence: the app's Ingress uses `path: /` with no host, so it matches everything.
+      ingress-nginx sorts paths **longest-first**, so `/site-a` still wins. Verify rather than
+      assume — this is the "how does a controller pick a rule" question from M4b, with a real
+      answer this time.
+
+**The packaging problem returns.** `k8s/21-site-a.yaml` hardcodes `host: site-a.localhost`, which
+is meaningless on EKS, and the EKS version needs a path rule instead. The same tension that pushed
+the app from raw manifests to Helm now applies to the demo sites. Options: a small chart for the
+sites, a kustomize overlay, or accept two sets of manifests. Decide before writing a second copy.
+
+**Verify when done:** one load balancer in `aws elbv2 describe-load-balancers`, all three paths
+answering, and KubePlayground's own tree showing three namespaces each with a working link chip —
+which is the screenshot worth putting in the README.
 
 ## KCNA coverage tracker
 

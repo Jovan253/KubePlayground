@@ -39,6 +39,30 @@ variable "project" {
   default = "kubeplayground"
 }
 
+variable "create_cluster" {
+  description = <<-EOT
+    Whether to create the EKS cluster and node group — the only resources here
+    that cost money (~$0.12/hr together).
+
+    Everything else (OIDC provider, IAM roles, ECR, VPC) is free and stays up.
+    Toggling this is how the environment is raised and torn down:
+
+      terraform apply -var=create_cluster=true
+      terraform apply -var=create_cluster=false
+
+    A variable rather than `-target`, which Terraform documents as an escape
+    hatch for recovering from mistakes, not routine operation. With `-target`
+    the plan is partial and the workflows have to know resource addresses; this
+    way the plan is always complete and honest.
+
+    NOTE: `helm uninstall` must run BEFORE setting this false. The load balancer
+    belongs to the Helm release, not Terraform, so destroying the cluster first
+    strands it — still billing, with nothing in state pointing at it.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "cluster_version" {
   description = "EKS Kubernetes minor version. 1.36 matches the local Docker Desktop cluster."
   type        = string
